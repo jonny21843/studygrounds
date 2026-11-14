@@ -2,114 +2,399 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Feagans Capstone Project</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StudyGrounds | Discover and Share Study Notes</title>
+    <meta name="description" content="Discover, organize, and share study notes, PDFs, presentations, spreadsheets, and other study materials across technology, science, business, health, and more.">
+    <meta name="robots" content="index,follow">
+    <link rel="canonical" href="https://joinstudygrounds.com/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="StudyGrounds">
+    <meta property="og:title" content="StudyGrounds | Discover and Share Study Notes">
+    <meta property="og:description" content="A community library for discovering, organizing, and sharing useful study materials.">
+    <meta property="og:url" content="https://joinstudygrounds.com/">
+    <meta name="twitter:card" content="summary">
     <link rel="stylesheet" href="styles.css">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "StudyGrounds",
+      "url": "https://joinstudygrounds.com/",
+      "description": "A community library for discovering, organizing, and sharing study notes and source materials."
+    }
+    </script>
 </head>
 <body>
-
-<h1>Welcome to Feagans Capstone Project</h1>
-
-<div class="tabs">
-    <button class="tab-button" data-tab="upload"><span>📤</span> Upload</button>
-    <button class="tab-button" data-tab="view"><span>📁</span> View Files</button>
-    <button class="tab-button" data-tab="about"><span>📘</span> About</button>
-</div>
-
-<!-- UPLOAD SECTION -->
-<section id="upload" class="tab-section hidden">
-    <div class="card">
-        <h2>Upload Files</h2>
-
-        <label>Choose Field:</label>
-        <select id="upload-field"></select>
-
-        <label>Create New Field:</label>
-        <input id="upload-new-field" placeholder="e.g. Medicine">
-
-        <br><br>
-
-        <label>Choose Category:</label>
-        <select id="upload-category"></select>
-
-        <label>Create New Category:</label>
-        <input id="upload-new-category" placeholder="e.g. Anatomy">
-
-        <div id="drop-zone" class="drop-zone">
-            Drag & drop a file here or click to select
+    <header class="site-header">
+        <div>
+            <p class="eyebrow">Study smarter from the notes you already have</p>
+            <h1>StudyGrounds</h1>
+            <p class="subtitle">Publish, discover, and organize study materials in one place.</p>
         </div>
 
-        <input type="file" id="file-input" accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" hidden>
+        <div class="auth-bar">
+            <span id="auth-status">Not signed in</span>
+            <button id="sign-in-btn" class="button button-primary">Sign In</button>
+            <button id="sign-out-btn" class="button button-secondary" hidden>Sign Out</button>
+        </div>
+    </header>
 
-        <button id="upload-btn" class="primary-btn">Upload</button>
-        <div class="upload-status-row">
-            <span id="upload-status-icon" class="status-icon"></span>
-            <span id="upload-status"></span>
+    <main class="app-shell">
+        <nav class="app-nav" aria-label="Primary">
+            <button id="my-notes-tab" class="nav-button active" type="button">My Notes</button>
+            <button id="explore-tab" class="nav-button" type="button">Explore</button>
+            <button id="settings-tab" class="nav-button" type="button" hidden>Settings</button>
+            <button id="analytics-tab" class="nav-button" type="button" hidden>Analytics</button>
+            <button id="security-tab" class="nav-button" type="button" hidden>Security</button>
+        </nav>
+
+        <section id="my-notes-view">
+            <section id="signed-out-panel" class="hero-card">
+                <div>
+                    <p class="eyebrow">Your study library</p>
+                    <h2>Bring handwritten and digital notes together.</h2>
+                    <p>Sign in to create private notes, upload PDFs, images, Word documents, PowerPoints, Excel workbooks, or Apple Pages files, and publish them when they are ready.</p>
+                </div>
+                <button id="hero-sign-in-btn" class="button button-primary">Sign In to Get Started</button>
+            </section>
+
+            <section id="notes-app" hidden>
+                <section id="profile-panel" class="card" hidden>
+                    <div class="card-heading">
+                        <div>
+                            <p class="eyebrow">Profile</p>
+                            <h3>Complete your profile</h3>
+                            <p>Your public notes will show only your first name and last initial, such as Jonathan F.</p>
+                        </div>
+                    </div>
+
+                    <form id="profile-form" class="note-form">
+                        <div class="form-grid">
+                            <label>
+                                First name
+                                <input id="profile-first-name" maxlength="60" autocomplete="given-name" required>
+                            </label>
+                            <label>
+                                Last name
+                                <input id="profile-last-name" maxlength="60" autocomplete="family-name" required>
+                            </label>
+                        </div>
+
+                        <div class="form-actions">
+                            <span id="profile-status" class="status-text" aria-live="polite"></span>
+                            <button id="profile-submit" type="submit" class="button button-primary">Save Profile</button>
+                        </div>
+                    </form>
+                </section>
+
+                <div class="dashboard-toolbar">
+                    <div>
+                        <p class="eyebrow">Library</p>
+                        <h2>Your Notes</h2>
+                    </div>
+                    <button id="new-note-btn" class="button button-primary">+ New Note</button>
+                </div>
+
+                <section id="create-note-panel" class="card" hidden>
+                    <div class="card-heading">
+                        <div>
+                            <h3 id="note-form-title">Create a note</h3>
+                            <p>Add enough context so someone discovering it later understands what the source material covers.</p>
+                        </div>
+                        <button id="cancel-note-btn" class="button button-text" type="button">Cancel</button>
+                    </div>
+
+                    <form id="create-note-form" class="note-form">
+                        <label>
+                            Title
+                            <input id="note-title" required maxlength="160" placeholder="AWS IAM Notes">
+                        </label>
+
+                        <div class="form-grid">
+                            <label>
+                                Subject
+                                <div class="search-select" data-search-select="subject">
+                                    <div class="search-select-input-row">
+                                        <input id="note-subject" maxlength="100" autocomplete="off" placeholder="Choose or type a subject">
+                                        <button class="search-select-toggle" type="button" aria-label="Show subject options" aria-expanded="false">▾</button>
+                                    </div>
+                                    <div id="subject-options" class="search-select-menu" hidden></div>
+                                </div>
+                            </label>
+
+                            <label>
+                                Topic
+                                <div class="search-select" data-search-select="topic">
+                                    <div class="search-select-input-row">
+                                        <input id="note-collection" maxlength="120" autocomplete="off" placeholder="Choose or type a topic">
+                                        <button class="search-select-toggle" type="button" aria-label="Show topic options" aria-expanded="false">▾</button>
+                                    </div>
+                                    <div id="topic-options" class="search-select-menu" hidden></div>
+                                </div>
+                            </label>
+                        </div>
+
+                        <label class="description-field">
+                            Description
+                            <textarea id="note-description" maxlength="1200" rows="5" placeholder="What do these notes cover? Mention important topics, chapters, services, exam objectives, or keywords someone might search for."></textarea>
+                        </label>
+
+                        <label class="description-field">
+                            Source file <span class="field-hint">(optional — one file at a time)</span>
+                            <input id="note-form-source" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.pptx,.xlsx,.pages">
+                        </label>
+
+                        <label class="publish-toggle">
+                            <input id="note-form-publish" type="checkbox">
+                            <span>Publish after saving</span>
+                        </label>
+
+                        <div class="form-actions">
+                            <span id="create-note-status" class="status-text" aria-live="polite"></span>
+                            <button id="note-form-submit" type="submit" class="button button-primary">Create Note</button>
+                        </div>
+                    </form>
+                </section>
+
+                <section id="notes-status" class="status-card" aria-live="polite">Loading your notes...</section>
+                <section id="notes-grid" class="notes-grid" aria-live="polite"></section>
+            </section>
+        </section>
+
+        <section id="explore-view" hidden>
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Community library</p>
+                    <h2>Explore Notes</h2>
+                    <p class="subtitle">Search public notes by title, broad subject, topic, or description keywords.</p>
+                </div>
             </div>
-            <div class="upload-progress">
-            <div id="upload-progress-bar" class="upload-progress-bar"></div>
+
+            <section class="explore-controls">
+                <div class="explore-search-line">
+                    <input id="public-search" type="search" placeholder="Search titles, subjects, topics, or keywords...">
+                    <button id="public-search-btn" class="button button-primary" type="button">Search</button>
+                </div>
+
+                <div class="explore-filter-line">
+                    <div class="explore-filter-group">
+                        <select id="public-subject" aria-label="Filter by subject">
+                            <option value="">All subjects</option>
+                        </select>
+                        <select id="public-collection" aria-label="Filter by topic">
+                            <option value="">All topics</option>
+                        </select>
+                        <select id="public-sort" aria-label="Sort public notes">
+                            <option value="newest">Newest</option>
+                            <option value="oldest">Oldest</option>
+                            <option value="title">Title A–Z</option>
+                            <option value="views">Most viewed</option>
+                        </select>
+                        <select id="public-page-size" aria-label="Notes per page">
+                            <option value="12">12 per page</option>
+                            <option value="18" selected>18 per page</option>
+                            <option value="24">24 per page</option>
+                            <option value="48">48 per page</option>
+                        </select>
+                    </div>
+                    <button id="public-search-clear" class="button button-text" type="button">Clear filters</button>
+                </div>
+
+                <div class="explore-results-bar">
+                    <div>
+                        <strong id="public-result-summary">Loading notes...</strong>
+                        <div id="public-active-filters" class="active-filter-list"></div>
+                    </div>
+                    <span id="public-page-summary" class="status-text"></span>
+                </div>
+            </section>
+
+            <section id="public-status" class="status-card" aria-live="polite">Loading public notes...</section>
+            <section id="public-grid" class="public-notes-grid" aria-live="polite"></section>
+            <div id="public-pagination" class="pagination-row" hidden>
+                <button id="public-first-page" class="button button-text" type="button">First</button>
+                <button id="public-prev-page" class="button button-secondary" type="button">← Previous</button>
+                <span id="public-page-label" class="status-text"></span>
+                <button id="public-next-page" class="button button-secondary" type="button">Next →</button>
+                <button id="public-last-page" class="button button-text" type="button">Last</button>
             </div>
 
-    </div>
-</section>
+            <section id="public-note-detail" class="card" hidden>
+                <button id="close-public-note" class="button button-text" type="button">← Back to Explore</button>
+                <div id="public-note-content"></div>
+            </section>
+        </section>
 
-<!-- VIEW FILES SECTION -->
-<section id="view" class="tab-section hidden">
-    <div class="card">
-        <h2>Available Files</h2>
+        <section id="analytics-view" hidden>
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Admin</p>
+                    <h2>Analytics</h2>
+                    <p class="subtitle">V1 product metrics for tracking usage as the app evolves.</p>
+                </div>
+                <button id="refresh-analytics" class="button button-secondary" type="button">Refresh</button>
+            </div>
 
-        <div id="breadcrumb">Home</div>
+            <section id="analytics-status" class="status-card" aria-live="polite">Loading analytics...</section>
 
-        <input id="search-box" class="search-box" placeholder="Search files...">
+            <section id="analytics-content" hidden>
+                <div class="analytics-grid">
+                    <article class="metric-card"><span>Users</span><strong id="metric-users">0</strong></article>
+                    <article class="metric-card"><span>Total notes</span><strong id="metric-notes">0</strong></article>
+                    <article class="metric-card"><span>Public notes</span><strong id="metric-public-notes">0</strong></article>
+                    <article class="metric-card"><span>Private notes</span><strong id="metric-private-notes">0</strong></article>
+                    <article class="metric-card"><span>Source files</span><strong id="metric-source-files">0</strong></article>
+                    <article class="metric-card"><span>Storage used</span><strong id="metric-storage">0 B</strong></article>
+                    <article class="metric-card"><span>Public views</span><strong id="metric-views">0</strong></article>
+                    <article class="metric-card"><span>Avg files / note</span><strong id="metric-average-files">0</strong></article>
+                </div>
 
-        <label>Select Field:</label>
-        <select id="view-field">
-            <option value="">-- Select Field --</option>
-        </select>
+                <div class="analytics-detail-grid">
+                    <section class="card">
+                        <h3>Top subjects</h3>
+                        <div id="analytics-subjects" class="analytics-list"></div>
+                    </section>
+                    <section class="card">
+                        <h3>Top topics</h3>
+                        <div id="analytics-collections" class="analytics-list"></div>
+                    </section>
+                </div>
 
-        <label>Select Category:</label>
-        <select id="view-category">
-            <option value="">-- Select Category --</option>
-        </select>
+                <section class="card">
+                    <h3>Recently published</h3>
+                    <div id="analytics-recent" class="analytics-list"></div>
+                </section>
+            </section>
+        </section>
 
-        <ul id="file-list"></ul>
-    </div>
-</section>
+        <section id="security-view" hidden>
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Admin</p>
+                    <h2>Security</h2>
+                    <p class="subtitle">Review malware incidents, account restrictions, and security actions.</p>
+                </div>
+                <button id="refresh-security" class="button button-secondary" type="button">Refresh</button>
+            </div>
 
-<!-- ABOUT SECTION -->
-<section id="about" class="tab-section hidden">
-<div class="about-card">
-  <h2>About This Project</h2>
+            <section id="security-status" class="status-card" aria-live="polite">Loading security records...</section>
 
-  <p>
-    This website is designed to make uploading and organizing notes simple and intuitive.
-  </p>
+            <section id="security-content" hidden>
+                <div class="analytics-grid security-metrics">
+                    <article class="metric-card"><span>Needs review</span><strong id="security-metric-review">0</strong></article>
+                    <article class="metric-card"><span>Restricted</span><strong id="security-metric-restricted">0</strong></article>
+                    <article class="metric-card"><span>Disabled</span><strong id="security-metric-disabled">0</strong></article>
+                    <article class="metric-card"><span>30-day strikes</span><strong id="security-metric-strikes">0</strong></article>
+                </div>
 
-  <p>
-    Users start by navigating to the <strong>Upload Files</strong> section and selecting a Field,
-    which represents a broad subject area such as IT or Medicine.
-  </p>
+                <section class="card">
+                    <div class="security-section-heading">
+                        <div>
+                            <h3>Accounts</h3>
+                            <p class="note-description">Only accounts with a StudyGrounds security record appear here.</p>
+                        </div>
+                    </div>
+                    <div id="security-users" class="security-user-list"></div>
+                </section>
 
-  <p>
-    If a suitable field does not already exist, users can create a new one.
-    They then select or create a Category to further organize their notes.
-  </p>
+                <section id="security-user-detail" class="card" hidden>
+                    <div class="security-detail-heading">
+                        <div>
+                            <p class="eyebrow">Account security</p>
+                            <h3 id="security-detail-title">Security details</h3>
+                            <p id="security-detail-subtitle" class="note-description"></p>
+                        </div>
+                        <button id="close-security-detail" class="button button-text" type="button">Close</button>
+                    </div>
 
-  <p>
-    Once a field and category are selected, users choose a file from their device and upload it.
-    Files are securely stored and automatically associated with the selected field and category.
-  </p>
+                    <div id="security-detail-summary" class="security-detail-summary"></div>
 
-  <p>
-    Uploaded files can be viewed in the <strong>View Files</strong> section, where notes are
-    organized based on their field and category, making materials easy to locate and review.
-  </p>
-</div>
-</section>
+                    <div class="security-detail-actions">
+                        <button id="security-restore-access" class="button button-secondary" type="button">Restore access</button>
+                        <button id="security-forgive-strikes" class="button button-secondary" type="button">Forgive strikes</button>
+                        <button id="security-reenable-account" class="button button-secondary" type="button">Re-enable account</button>
+                        <button id="security-disable-account" class="button security-danger-button" type="button">Disable account</button>
+                    </div>
 
-<script src="config.js"></script>
-<script src="tabs.js"></script>
-<script src="upload.js"></script>
-<script src="view.js"></script>
+                    <div class="security-detail-grid">
+                        <section>
+                            <h3>Incident history</h3>
+                            <div id="security-incidents" class="security-history-list"></div>
+                        </section>
+                        <section>
+                            <h3>Admin audit trail</h3>
+                            <div id="security-audit" class="security-history-list"></div>
+                        </section>
+                    </div>
+                </section>
+            </section>
+        </section>
 
+        <section id="settings-view" hidden>
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Account</p>
+                    <h2>Settings</h2>
+                    <p class="subtitle">Manage the name used for your public note attribution.</p>
+                </div>
+            </div>
+
+            <section class="card settings-profile-card">
+                <div class="settings-profile-heading">
+                    <div>
+                        <h3>Public profile</h3>
+                        <p>Your public notes show only your first name and last initial.</p>
+                    </div>
+                    <p id="settings-public-preview" class="profile-preview"></p>
+                </div>
+
+                <form id="settings-profile-form" class="settings-profile-form">
+                    <label>
+                        First name
+                        <input id="settings-first-name" maxlength="60" autocomplete="given-name" required>
+                    </label>
+                    <label>
+                        Last name
+                        <input id="settings-last-name" maxlength="60" autocomplete="family-name" required>
+                    </label>
+                    <div class="settings-profile-action">
+                        <span id="settings-profile-status" class="status-text" aria-live="polite"></span>
+                        <button id="settings-profile-submit" type="submit" class="button button-primary">Save</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="card">
+                <h3>V1 upload limits</h3>
+                <p class="note-description">Up to 10 source files per note, 20 MB per file, and one upload at a time. Supported types: PDF, JPG/JPEG, PNG, WEBP, DOCX, PPTX, XLSX, and Apple Pages.</p>
+            </section>
+        </section>
+        <section class="seo-home-section" aria-labelledby="seo-home-title">
+            <p class="eyebrow">Built for learning</p>
+            <h2 id="seo-home-title">Find study notes across the subjects you care about.</h2>
+            <p>StudyGrounds is a community study library where students and lifelong learners can discover public notes and source materials, keep their own study files organized, and publish useful resources for others.</p>
+            <div class="seo-home-grid">
+                <article>
+                    <h3>Discover useful material</h3>
+                    <p>Browse public study notes by subject, topic, title, and keywords.</p>
+                </article>
+                <article>
+                    <h3>Keep source files together</h3>
+                    <p>Organize PDFs, images, Word documents, PowerPoint presentations, Excel workbooks, and Apple Pages files alongside each note.</p>
+                </article>
+                <article>
+                    <h3>Share when you are ready</h3>
+                    <p>Your notes stay private until you publish them. Public materials keep attribution while your account identity remains protected.</p>
+                </article>
+            </div>
+            <p class="seo-home-link"><a href="/study-notes.html">Learn more about finding and sharing study notes on StudyGrounds →</a></p>
+        </section>
+    </main>
+
+    <input id="note-upload-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.pptx,.xlsx,.pages" hidden>
+
+    <script src="config.js"></script>
+    <script src="auth.js"></script>
+    <script src="notes.js"></script>
 </body>
 </html>

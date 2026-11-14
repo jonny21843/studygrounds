@@ -2,11 +2,11 @@ from flask import Flask, request, jsonify
 import boto3
 import os
 
+# Legacy capstone prototype backend.
+# New development is moving to API Gateway + Lambda under backend/ and infrastructure/.
 app = Flask(__name__)
 
-# Your DEV uploads bucket
 S3_BUCKET = os.environ.get("UPLOADS_BUCKET", "dev-feagans-capstone")
-
 s3_client = boto3.client("s3")
 
 
@@ -20,9 +20,6 @@ def health():
     return "ok", 200
 
 
-# -------------------------
-# Upload presign (PUT)
-# -------------------------
 @app.route("/api/presign-upload", methods=["POST"])
 def presign_upload():
     data = request.get_json(force=True)
@@ -50,7 +47,7 @@ def presign_upload():
         return jsonify(
             {
                 "uploadUrl": presigned_url,
-                "url": presigned_url,   # compat
+                "url": presigned_url,
                 "finalKey": key,
                 "bucket": S3_BUCKET,
             }
@@ -59,13 +56,9 @@ def presign_upload():
         return jsonify({"error": str(e)}), 500
 
 
-# -------------------------
-# Download presign (GET)
-# -------------------------
 @app.route("/api/presign-download", methods=["POST"])
 def presign_download():
     data = request.get_json(force=True)
-
     key = data.get("key")
 
     if not key:
@@ -84,20 +77,11 @@ def presign_download():
             Params={"Bucket": S3_BUCKET, "Key": key},
             ExpiresIn=300,
         )
-        return jsonify(
-            {
-                "downloadUrl": presigned_url,
-                "url": presigned_url,   # compat
-                "key": key,
-            }
-        )
+        return jsonify({"downloadUrl": presigned_url, "url": presigned_url, "key": key})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
-# -------------------------
-# List fields
-# -------------------------
 @app.route("/api/list-fields", methods=["GET"])
 def list_fields():
     prefix = "uploadedfiles/"
@@ -119,9 +103,6 @@ def list_fields():
         return jsonify({"error": str(e)}), 500
 
 
-# -------------------------
-# List categories
-# -------------------------
 @app.route("/api/list-categories", methods=["GET"])
 def list_categories():
     field = safe_segment(request.args.get("field"))
@@ -148,9 +129,6 @@ def list_categories():
         return jsonify({"error": str(e)}), 500
 
 
-# -------------------------
-# List files
-# -------------------------
 @app.route("/api/list-files", methods=["GET"])
 def list_files():
     field = safe_segment(request.args.get("field"))

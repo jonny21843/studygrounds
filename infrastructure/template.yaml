@@ -1,0 +1,779 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Serverless API foundation for StudyGrounds.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+
+  ResourceNamePrefix:
+    Type: String
+    Default: ""
+    Description: Optional explicit resource prefix. Leave blank for the existing DEV stack to preserve generated names; use studygrounds-prod for clean production names.
+
+  SiteUrl:
+    Type: String
+    Default: https://dev.joinstudygrounds.com
+
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: http://localhost:8080,https://dev.joinstudygrounds.com
+
+  EmailSubjectPrefix:
+    Type: String
+    Default: "[StudyGrounds DEV]"
+
+  CognitoUserPoolId:
+    Type: String
+    Default: us-east-2_sZ3qWdfwv
+
+  CognitoAppClientId:
+    Type: String
+    Default: 3t79knetd0pdav5jsso0osfb1e
+
+  AdminEmails:
+    Type: String
+    Default: jonathan.feagans@outlook.com
+    Description: Comma-separated administrator emails allowed to view app analytics.
+
+  CloudFrontOrigin:
+    Type: String
+    Default: https://d84l1y8p4kdic.cloudfront.net
+    Description: Legacy saved deploy parameter; not used during localhost development.
+
+Conditions:
+  UseExplicitResourceNames: !Not [!Equals [!Ref ResourceNamePrefix, ""]]
+
+Resources:
+  NotesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-notes", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: noteId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: noteId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: NoteIdIndex
+          KeySchema:
+            - AttributeName: noteId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  UserSecurityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-security", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  NotesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-uploads-${AWS::AccountId}-${AWS::Region}", !Ref "AWS::NoValue"]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins: !Ref AllowedOrigins
+            AllowedMethods:
+              - PUT
+              - POST
+              - GET
+            AllowedHeaders:
+              - "*"
+            ExposedHeaders:
+              - ETag
+            MaxAge: 300
+
+  GuardDutyMalwareScanRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: malware-protection-plan.guardduty.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StudyGroundsMalwareProtection
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: AllowManagedRuleToSendS3EventsToGuardDuty
+                Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:DeleteRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                Resource: !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3*"
+                Condition:
+                  StringLike:
+                    events:ManagedBy: malware-protection-plan.guardduty.amazonaws.com
+              - Sid: AllowGuardDutyToMonitorEventBridgeManagedRule
+                Effect: Allow
+                Action:
+                  - events:DescribeRule
+                  - events:ListTargetsByRule
+                Resource: !Sub "arn:${AWS::Partition}:events:${AWS::Region}:${AWS::AccountId}:rule/DO-NOT-DELETE-AmazonGuardDutyMalwareProtectionS3*"
+              - Sid: AllowPostScanTag
+                Effect: Allow
+                Action:
+                  - s3:PutObjectTagging
+                  - s3:GetObjectTagging
+                  - s3:PutObjectVersionTagging
+                  - s3:GetObjectVersionTagging
+                Resource: !Sub "${NotesBucket.Arn}/*"
+              - Sid: AllowEnableS3EventBridgeEvents
+                Effect: Allow
+                Action:
+                  - s3:PutBucketNotification
+                  - s3:GetBucketNotification
+                Resource: !GetAtt NotesBucket.Arn
+              - Sid: AllowPutValidationObject
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub "${NotesBucket.Arn}/malware-protection-resource-validation-object"
+              - Sid: AllowCheckBucketOwnership
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !GetAtt NotesBucket.Arn
+              - Sid: AllowMalwareScan
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "${NotesBucket.Arn}/*"
+
+  GuardDutyMalwareProtectionPlan:
+    Type: AWS::GuardDuty::MalwareProtectionPlan
+    DependsOn:
+      - GuardDutyMalwareScanRole
+    Properties:
+      Role: !GetAtt GuardDutyMalwareScanRole.Arn
+      ProtectedResource:
+        S3Bucket:
+          BucketName: !Ref NotesBucket
+          ObjectPrefixes:
+            - users/
+      Actions:
+        Tagging:
+          Status: ENABLED
+      Tags:
+        - Key: Application
+          Value: StudyGrounds
+
+  NotesApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: "$default"
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 30
+        ThrottlingRateLimit: 15
+      RouteSettings:
+        "POST /api/notes/{noteId}/upload":
+          ThrottlingBurstLimit: 2
+          ThrottlingRateLimit: 1
+        "POST /api/notes/{noteId}/files":
+          ThrottlingBurstLimit: 4
+          ThrottlingRateLimit: 2
+        "GET /api/public/notes/{noteId}/files/{fileId}/preview":
+          ThrottlingBurstLimit: 4
+          ThrottlingRateLimit: 2
+      CorsConfiguration:
+        AllowOrigins: !Ref AllowedOrigins
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - DELETE
+          - OPTIONS
+      Auth:
+        Authorizers:
+          CognitoJwtAuthorizer:
+            IdentitySource: "$request.header.Authorization"
+            JwtConfiguration:
+              issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPoolId}"
+              audience:
+                - !Ref CognitoAppClientId
+        DefaultAuthorizer: CognitoJwtAuthorizer
+
+  MeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/me/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Events:
+        GetMe:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/me
+            Method: GET
+            PayloadFormatVersion: "2.0"
+
+  ProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/profile/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+                - cognito-idp:AdminUpdateUserAttributes
+              Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+      Events:
+        GetProfile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/profile
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        UpdateProfile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/profile
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
+  AdminAnalyticsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/admin/analytics/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          NOTES_BUCKET: !Ref NotesBucket
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          ADMIN_EMAILS: !Ref AdminEmails
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+              Resource: "*"
+      Events:
+        GetAdminAnalytics:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/analytics
+            Method: GET
+            PayloadFormatVersion: "2.0"
+
+  AdminSecurityFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/admin/security/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          SECURITY_TABLE: !Ref UserSecurityTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          ADMIN_EMAILS: !Ref AdminEmails
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserSecurityTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+                - cognito-idp:AdminEnableUser
+                - cognito-idp:AdminDisableUser
+              Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+      Events:
+        ListSecurity:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/security
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        GetSecurityUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/security/{userId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        UpdateSecurityUser:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/security/{userId}
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
+  CreateNoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notes/create/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref NotesTable
+      Events:
+        CreateNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes
+            Method: POST
+            PayloadFormatVersion: "2.0"
+
+  UpdateNoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notes/update/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref NotesTable
+      Events:
+        UpdateNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes/{noteId}
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
+  ListNotesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notes/list/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          NOTES_BUCKET: !Ref NotesBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObjectTagging
+              Resource: !Sub "${NotesBucket.Arn}/*"
+      Events:
+        ListNotes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes
+            Method: GET
+            PayloadFormatVersion: "2.0"
+
+  CreateUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notes/upload/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          NOTES_BUCKET: !Ref NotesBucket
+          SECURITY_TABLE: !Ref UserSecurityTable
+          MAX_FILE_BYTES: 20971520
+          MAX_FILES_PER_NOTE: 10
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserSecurityTable
+        - S3WritePolicy:
+            BucketName: !Ref NotesBucket
+      Events:
+        CreateUpload:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes/{noteId}/upload
+            Method: POST
+            PayloadFormatVersion: "2.0"
+
+  RegisterFileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notes/files/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          NOTES_BUCKET: !Ref NotesBucket
+          SECURITY_TABLE: !Ref UserSecurityTable
+          MAX_FILE_BYTES: 20971520
+          MAX_FILES_PER_NOTE: 10
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserSecurityTable
+        - S3CrudPolicy:
+            BucketName: !Ref NotesBucket
+      Events:
+        RegisterFile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes/{noteId}/files
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        UpdateFile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes/{noteId}/files/{fileId}
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
+  DeleteSourceFileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notes/delete_file/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          NOTES_BUCKET: !Ref NotesBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - S3CrudPolicy:
+            BucketName: !Ref NotesBucket
+      Events:
+        DeleteSourceFile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes/{noteId}/files/{fileId}
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
+
+  DeleteNoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notes/delete/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          NOTES_BUCKET: !Ref NotesBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - S3CrudPolicy:
+            BucketName: !Ref NotesBucket
+      Events:
+        DeleteNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes/{noteId}
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
+
+  PublishNoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notes/publish/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          NOTES_BUCKET: !Ref NotesBucket
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          SECURITY_TABLE: !Ref UserSecurityTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UserSecurityTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminGetUser
+              Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+            - Effect: Allow
+              Action:
+                - s3:GetObjectTagging
+              Resource: !Sub "${NotesBucket.Arn}/*"
+      Events:
+        PublishNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notes/{noteId}/publish
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
+  MalwareScanResultFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/security/malware_scan_result/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          SECURITY_TABLE: !Ref UserSecurityTable
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          ADMIN_EMAILS: !Ref AdminEmails
+          SES_FROM_EMAIL: "StudyGrounds <notifications@joinstudygrounds.com>"
+          APP_URL: !Ref SiteUrl
+          EMAIL_SUBJECT_PREFIX: !Ref EmailSubjectPrefix
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserSecurityTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:ListUsers
+                - cognito-idp:AdminDisableUser
+              Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+            - Effect: Allow
+              Action:
+                - ses:SendEmail
+              Resource:
+                - !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/joinstudygrounds.com"
+                - !Sub "arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/studygrounds-transactional"
+      Events:
+        GuardDutyScanResult:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.guardduty
+              detail-type:
+                - GuardDuty Malware Protection Object Scan Result
+
+  PublicSeoFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/public/seo/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          SITE_URL: !Ref SiteUrl
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+      Events:
+        PublicNoteSeo:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /notes/{noteId}/{slug}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            Auth:
+              Authorizer: NONE
+        PublicSitemap:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /sitemap.xml
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            Auth:
+              Authorizer: NONE
+
+  PublicNotesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/public/list/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+      Events:
+        PublicNotes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            Auth:
+              Authorizer: NONE
+
+  PublicNoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/public/get/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          NOTES_BUCKET: !Ref NotesBucket
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - S3ReadPolicy:
+            BucketName: !Ref NotesBucket
+      Events:
+        PublicNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            Auth:
+              Authorizer: NONE
+        PublicNoteFilePreview:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/files/{fileId}/preview
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            Auth:
+              Authorizer: NONE
+
+Outputs:
+  EnvironmentName:
+    Value: !Ref EnvironmentName
+
+  ApiBaseUrl:
+    Description: Base URL for the Notes App HTTP API.
+    Value: !Sub "https://${NotesApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+
+  NotesTableName:
+    Description: DynamoDB table used for user-owned note metadata.
+    Value: !Ref NotesTable
+
+  NotesBucketName:
+    Description: Private S3 bucket used for note source files.
+    Value: !Ref NotesBucket
