@@ -1,6 +1,7 @@
 name: Deploy StudyGrounds DEV backend
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - develop
