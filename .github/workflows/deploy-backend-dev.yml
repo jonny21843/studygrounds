@@ -1,0 +1,62 @@
+name: Deploy StudyGrounds DEV backend
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - "backend/**"
+      - "infrastructure/template.yaml"
+      - "samconfig.toml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: studygrounds-development-backend
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy backend to development
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v3
+
+      - name: Build SAM application
+        run: sam build --no-cached --template-file infrastructure/template.yaml
+
+      - name: Deploy DEV backend
+        shell: bash
+        run: |
+          set -euo pipefail
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name notes-app-dev \
+            --region us-east-2 \
+            --capabilities CAPABILITY_IAM \
+            --resolve-s3 \
+            --role-arn arn:aws:iam::248189942252:role/StudyGroundsDevCloudFormationExecutionRole \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              EnvironmentName=dev \
+              SiteUrl=https://dev.joinstudygrounds.com \
+              'EmailSubjectPrefix=[StudyGrounds DEV]' \
+              CognitoUserPoolId=us-east-2_sZ3qWdfwv \
+              CognitoAppClientId=3t79knetd0pdav5jsso0osfb1e \
+              AdminEmails=jonathan.feagans@outlook.com \
+              'AllowedOrigins=http://localhost:8080,https://dev.joinstudygrounds.com'
