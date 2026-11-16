@@ -46,6 +46,7 @@
             <button id="settings-tab" class="nav-button" type="button" hidden>Settings</button>
             <button id="analytics-tab" class="nav-button" type="button" hidden>Analytics</button>
             <button id="security-tab" class="nav-button" type="button" hidden>Security</button>
+            <button id="moderation-tab" class="nav-button" type="button" hidden>Moderation</button>
         </nav>
 
         <section id="my-notes-view">
@@ -326,6 +327,39 @@
                             <div id="security-audit" class="security-history-list"></div>
                         </section>
                     </div>
+                </section>
+            </section>
+        </section>
+
+
+        <section id="moderation-view" hidden>
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Admin</p>
+                    <h2>Moderation</h2>
+                    <p class="subtitle">Review community reports and remove public notes that violate StudyGrounds rules.</p>
+                </div>
+                <button id="refresh-moderation" class="button button-secondary" type="button">Refresh</button>
+            </div>
+
+            <section id="moderation-status" class="status-card" aria-live="polite">Loading reports...</section>
+
+            <section id="moderation-content" hidden>
+                <div class="analytics-grid">
+                    <article class="metric-card"><span>Open reports</span><strong id="moderation-metric-open">0</strong></article>
+                    <article class="metric-card"><span>Actioned</span><strong id="moderation-metric-actioned">0</strong></article>
+                    <article class="metric-card"><span>Dismissed</span><strong id="moderation-metric-dismissed">0</strong></article>
+                    <article class="metric-card"><span>Total reports</span><strong id="moderation-metric-total">0</strong></article>
+                </div>
+
+                <section class="card">
+                    <div class="security-section-heading">
+                        <div>
+                            <h3>Community reports</h3>
+                            <p class="note-description">Each signed-in member can have one active report per public note.</p>
+                        </div>
+                    </div>
+                    <div id="moderation-reports" class="security-history-list"></div>
                 </section>
             </section>
         </section>
