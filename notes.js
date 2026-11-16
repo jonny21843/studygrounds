@@ -481,11 +481,13 @@ function setActiveView(view) {
     document.getElementById("settings-view").hidden = view !== "settings";
     document.getElementById("analytics-view").hidden = view !== "analytics";
     document.getElementById("security-view").hidden = view !== "security";
+    document.getElementById("moderation-view").hidden = view !== "moderation";
     document.getElementById("my-notes-tab").classList.toggle("active", view === "my-notes");
     document.getElementById("explore-tab").classList.toggle("active", view === "explore");
     document.getElementById("settings-tab").classList.toggle("active", view === "settings");
     document.getElementById("analytics-tab").classList.toggle("active", view === "analytics");
     document.getElementById("security-tab").classList.toggle("active", view === "security");
+    document.getElementById("moderation-tab").classList.toggle("active", view === "moderation");
 
     if (view === "explore") {
         loadPublicNotes();
@@ -493,6 +495,8 @@ function setActiveView(view) {
         loadAdminAnalytics();
     } else if (view === "security") {
         loadAdminSecurity();
+    } else if (view === "moderation") {
+        loadAdminModeration();
     }
 }
 
@@ -511,6 +515,7 @@ function renderSignedInState() {
     const settingsTab = document.getElementById("settings-tab");
     const analyticsTab = document.getElementById("analytics-tab");
     const securityTab = document.getElementById("security-tab");
+    const moderationTab = document.getElementById("moderation-tab");
 
     signedOutPanel.hidden = signedIn;
     notesApp.hidden = !signedIn;
@@ -518,8 +523,9 @@ function renderSignedInState() {
     settingsTab.hidden = !signedIn;
     analyticsTab.hidden = !signedIn || !isConfiguredAdmin();
     securityTab.hidden = !signedIn || !isConfiguredAdmin();
+    moderationTab.hidden = !signedIn || !isConfiguredAdmin();
 
-    if (!signedIn && ["my-notes", "settings", "analytics", "security"].includes(notesState.activeView)) {
+    if (!signedIn && ["my-notes", "settings", "analytics", "security", "moderation"].includes(notesState.activeView)) {
         setActiveView("explore");
     }
 }
@@ -2345,6 +2351,181 @@ async function sharePublicNote(noteId, title, event = null) {
     }
 }
 
+
+async function submitPublicNoteReport(noteId) {
+    const reasonElement = document.getElementById("report-note-reason");
+    const detailsElement = document.getElementById("report-note-details");
+    const statusElement = document.getElementById("report-note-status");
+    const submitButton = document.getElementById("report-note-submit");
+
+    const reason = reasonElement?.value || "";
+    const details = detailsElement?.value?.trim() || "";
+
+    if (!reason) {
+        if (statusElement) {
+            statusElement.textContent = "Choose a reason before submitting.";
+            statusElement.className = "status-text error";
+        }
+        return;
+    }
+
+    if (submitButton) submitButton.disabled = true;
+    if (statusElement) {
+        statusElement.textContent = "Submitting report...";
+        statusElement.className = "status-text";
+    }
+
+    try {
+        const response = await authenticatedFetch(
+            `/api/public/notes/${encodeURIComponent(noteId)}/report`,
+            {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({reason, details})
+            }
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to submit report.");
+
+        if (statusElement) {
+            statusElement.textContent = data.message || "Report submitted.";
+            statusElement.className = "status-text success";
+        }
+        if (detailsElement) detailsElement.value = "";
+    } catch (error) {
+        if (statusElement) {
+            statusElement.textContent = error.message || "Unable to submit report.";
+            statusElement.className = "status-text error";
+        }
+    } finally {
+        if (submitButton) submitButton.disabled = false;
+    }
+}
+
+function moderationReasonLabel(reason) {
+    const labels = {
+        spam: "Spam",
+        inappropriate: "Inappropriate content",
+        copyright: "Copyright concern",
+        misleading: "Misleading or inaccurate",
+        other: "Other"
+    };
+    return labels[String(reason || "").toLowerCase()] || reason || "Unspecified";
+}
+
+function renderModerationReports(reports) {
+    const container = document.getElementById("moderation-reports");
+    if (!container) return;
+
+    if (!reports.length) {
+        container.innerHTML = '<div class="empty-state"><h3>No reports yet</h3><p>Community reports will appear here for review.</p></div>';
+        return;
+    }
+
+    container.innerHTML = reports.map((report) => {
+        const status = String(report.status || "OPEN").toUpperCase();
+        const isOpen = status === "OPEN";
+        return `
+            <article class="security-history-item moderation-report-item">
+                <div class="security-history-heading">
+                    <div>
+                        <strong>${escapeHtml(report.noteTitle || "Untitled note")}</strong>
+                        <span class="status-pill">${escapeHtml(status)}</span>
+                    </div>
+                    <span>${escapeHtml(formatDate(report.createdAt))}</span>
+                </div>
+                <p><strong>Reason:</strong> ${escapeHtml(moderationReasonLabel(report.reason))}</p>
+                ${report.details ? `<p>${escapeHtml(report.details)}</p>` : ""}
+                <p class="note-description">
+                    Reporter: ${escapeHtml(report.reporterEmail || "Signed-in member")}
+                    ${report.reviewedBy ? ` · Reviewed by ${escapeHtml(report.reviewedBy)}` : ""}
+                </p>
+                ${isOpen ? `
+                    <div class="security-detail-actions">
+                        <button class="button button-secondary moderation-action" type="button"
+                            data-report-id="${escapeHtml(report.reportId)}" data-action="dismiss">
+                            Dismiss
+                        </button>
+                        <button class="button security-danger-button moderation-action" type="button"
+                            data-report-id="${escapeHtml(report.reportId)}" data-action="unpublish">
+                            Unpublish note
+                        </button>
+                    </div>
+                ` : ""}
+            </article>
+        `;
+    }).join("");
+
+    container.querySelectorAll(".moderation-action").forEach((button) => {
+        button.addEventListener("click", () => {
+            applyModerationAction(button.dataset.reportId, button.dataset.action);
+        });
+    });
+}
+
+async function loadAdminModeration() {
+    if (!isConfiguredAdmin()) return;
+
+    const status = document.getElementById("moderation-status");
+    const content = document.getElementById("moderation-content");
+    if (status) {
+        status.hidden = false;
+        status.textContent = "Loading reports...";
+        status.className = "status-card";
+    }
+    if (content) content.hidden = true;
+
+    try {
+        const response = await authenticatedFetch("/api/admin/moderation");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to load moderation reports.");
+
+        const metrics = data.metrics || {};
+        document.getElementById("moderation-metric-open").textContent = Number(metrics.open || 0).toLocaleString();
+        document.getElementById("moderation-metric-actioned").textContent = Number(metrics.actioned || 0).toLocaleString();
+        document.getElementById("moderation-metric-dismissed").textContent = Number(metrics.dismissed || 0).toLocaleString();
+        document.getElementById("moderation-metric-total").textContent = Number(metrics.total || 0).toLocaleString();
+        renderModerationReports(data.reports || []);
+
+        if (status) status.hidden = true;
+        if (content) content.hidden = false;
+    } catch (error) {
+        if (status) {
+            status.hidden = false;
+            status.textContent = error.message || "Unable to load moderation reports.";
+            status.className = "status-card error";
+        }
+    }
+}
+
+async function applyModerationAction(reportId, action) {
+    if (!reportId || !action) return;
+
+    const actionLabel = action === "unpublish" ? "unpublish this note" : "dismiss this report";
+    if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
+
+    try {
+        const response = await authenticatedFetch(
+            `/api/admin/moderation/${encodeURIComponent(reportId)}`,
+            {
+                method: "PATCH",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({action})
+            }
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to apply moderation action.");
+
+        showAppNotice(
+            action === "unpublish" ? "The reported note was unpublished." : "The report was dismissed.",
+            "success"
+        );
+        await loadAdminModeration();
+    } catch (error) {
+        showAppNotice(error.message || "Unable to apply moderation action.", "error", 6500);
+    }
+}
+
 async function openPublicNote(noteId, updateUrl = true) {
     const grid = document.getElementById("public-grid");
     const detail = document.getElementById("public-note-detail");
@@ -2399,6 +2580,30 @@ async function openPublicNote(noteId, updateUrl = true) {
                         ${publishedDate ? `<span>Published ${escapeHtml(publishedDate)}</span>` : ""}
                     </div>
                     <button id="share-public-note" class="button button-secondary" type="button">Copy Share Link</button>
+                    ${isAuthenticated() ? `
+                        <details class="report-note-panel">
+                            <summary>Report note</summary>
+                            <label>
+                                Reason
+                                <select id="report-note-reason">
+                                    <option value="">Choose a reason</option>
+                                    <option value="spam">Spam</option>
+                                    <option value="inappropriate">Inappropriate content</option>
+                                    <option value="copyright">Copyright concern</option>
+                                    <option value="misleading">Misleading or inaccurate</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </label>
+                            <label>
+                                Details (optional)
+                                <textarea id="report-note-details" maxlength="1000" rows="3" placeholder="Add context for the moderation team."></textarea>
+                            </label>
+                            <div class="form-actions">
+                                <span id="report-note-status" class="status-text" aria-live="polite"></span>
+                                <button id="report-note-submit" class="button button-secondary" type="button">Submit report</button>
+                            </div>
+                        </details>
+                    ` : ""}
                 </div>
             </section>
 
@@ -2426,6 +2631,7 @@ async function openPublicNote(noteId, updateUrl = true) {
         document.getElementById("public-status").hidden = true;
         detail.hidden = false;
         document.getElementById("share-public-note")?.addEventListener("click", (event) => sharePublicNote(noteId, note.title, event));
+        document.getElementById("report-note-submit")?.addEventListener("click", () => submitPublicNoteReport(noteId));
         await Promise.all([
             loadNativeExcelPreviews(noteId),
             loadNativePowerPointPreviews(noteId),
@@ -2456,8 +2662,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("settings-tab").addEventListener("click", () => setActiveView("settings"));
     document.getElementById("analytics-tab").addEventListener("click", () => setActiveView("analytics"));
     document.getElementById("security-tab").addEventListener("click", () => setActiveView("security"));
+    document.getElementById("moderation-tab").addEventListener("click", () => setActiveView("moderation"));
     document.getElementById("refresh-analytics").addEventListener("click", loadAdminAnalytics);
     document.getElementById("refresh-security").addEventListener("click", () => loadAdminSecurity());
+    document.getElementById("refresh-moderation").addEventListener("click", loadAdminModeration);
     document.getElementById("close-security-detail").addEventListener("click", () => {
         document.getElementById("security-user-detail").hidden = true;
         notesState.selectedSecurityUserId = null;
