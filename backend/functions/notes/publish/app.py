@@ -142,6 +142,15 @@ def lambda_handler(event, context):
     now = datetime.now(timezone.utc).isoformat()
 
     if published:
+        if note.get("moderationHold"):
+            return response(
+                423,
+                {
+                    "error": "This note was removed by StudyGrounds moderation and cannot be republished until an admin restores it.",
+                    "code": "PUBLISH_MODERATION_BLOCK",
+                },
+            )
+
         profile = security_profile(user_id)
         if profile.get("publishingBlocked"):
             return response(
