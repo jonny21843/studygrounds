@@ -133,15 +133,38 @@ def unpublish_note(note_id, admin):
     notes_table.update_item(
         Key={"userId": note["userId"], "noteId": note["noteId"]},
         UpdateExpression=(
-            "SET visibility = :private, moderatedAt = :moderated_at, "
-            "moderatedBy = :moderated_by, moderationReason = :reason "
-            "REMOVE publishedAt"
+            "SET visibility = :private, moderationHold = :hold, "
+            "moderatedAt = :moderated_at, moderatedBy = :moderated_by, "
+            "moderationReason = :reason "
+            "REMOVE publishedAt, publishPending, publishScanError"
         ),
         ExpressionAttributeValues={
             ":private": "private",
+            ":hold": True,
             ":moderated_at": now,
             ":moderated_by": admin,
             ":reason": "Reported content removed by moderation",
+        },
+    )
+
+
+def restore_note(note_id, admin):
+    note = get_note(note_id)
+    if not note:
+        raise ValueError("Reported note no longer exists.")
+
+    now = datetime.now(timezone.utc).isoformat()
+    notes_table.update_item(
+        Key={"userId": note["userId"], "noteId": note["noteId"]},
+        UpdateExpression=(
+            "SET visibility = :private, moderationRestoredAt = :restored_at, "
+            "moderationRestoredBy = :restored_by "
+            "REMOVE moderationHold, moderationReason"
+        ),
+        ExpressionAttributeValues={
+            ":private": "private",
+            ":restored_at": now,
+            ":restored_by": admin,
         },
     )
 
@@ -167,6 +190,9 @@ def handle_action(event, report_id):
         elif action == "unpublish":
             unpublish_note(report.get("noteId"), admin)
             update_report(report_id, "ACTIONED", admin, action)
+        elif action == "restore":
+            restore_note(report.get("noteId"), admin)
+            update_report(report_id, "RESTORED", admin, action)
         else:
             return response(400, {"error": "Unsupported moderation action."})
     except ValueError as exc:
