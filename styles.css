@@ -2897,3 +2897,23 @@ h3 {
     #helpful-public-feedback { text-align: left; }
     .public-note-stats { justify-content: flex-start; }
 }
+
+/* Quick discovery shortcut for community favorites. */
+.explore-most-helpful {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    margin-top: 8px;
+    padding: 6px 10px;
+    border: 1px solid #b9c4fa;
+    border-radius: 999px;
+    background: #fff;
+    color: #394aa3;
+    font-size: 0.78rem;
+    font-weight: 750;
+}
+.explore-most-helpful:hover, .explore-most-helpful[aria-pressed="true"] {
+    background: #edf0ff;
+    border-color: #7e92f0;
+}
+.explore-most-helpful:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }

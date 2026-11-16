@@ -157,7 +157,7 @@ def lambda_handler(event, context):
     elif sort == "views":
         notes.sort(key=lambda note: (int(note.get("viewCount") or 0), note.get("publishedAt") or ""), reverse=True)
     elif sort == "helpful":
-        notes.sort(key=lambda note: (max(0, int(note.get("helpfulCount") or 0)), note.get("publishedAt") or ""), reverse=True)
+        notes.sort(key=lambda note: (max(0, int(note.get("helpfulCount") or 0)), note.get("publishedAt") or "", note.get("noteId") or ""), reverse=True)
     else:
         notes.sort(key=lambda note: note.get("publishedAt", ""), reverse=True)
 

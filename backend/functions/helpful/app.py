@@ -94,14 +94,14 @@ def transact(note, voter, add):
             "ConditionExpression": "attribute_exists(userId)",
         }
     }
-    condition = "attribute_exists(userId) AND #v = :public AND (attribute_not_exists(moderationHold) OR moderationHold = :false)" if add else "attribute_exists(userId) AND (attribute_not_exists(helpfulCount) OR helpfulCount >= :one)"
+    condition = "attribute_exists(userId) AND #v = :public AND (attribute_not_exists(moderationHold) OR moderationHold = :false)" if add else "attribute_exists(userId) AND helpfulCount >= :one"
     update = {
         "Update": {
             "TableName": NOTES_NAME,
             "Key": note_key,
             "UpdateExpression": "ADD helpfulCount :delta",
             "ConditionExpression": condition,
-            "ExpressionAttributeNames": {"#v": "visibility"} if add else {},
+            **({"ExpressionAttributeNames": {"#v": "visibility"}} if add else {}),
             "ExpressionAttributeValues": {
                 ":delta": {"N": "1" if add else "-1"},
                 **({":public": {"S": "public"}, ":false": {"BOOL": False}} if add else {":one": {"N": "1"}}),

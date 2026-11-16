@@ -2249,6 +2249,7 @@ async function loadPublicNotes() {
     const subject = document.getElementById("public-subject").value;
     const collection = document.getElementById("public-collection").value;
     const sort = document.getElementById("public-sort").value;
+    document.getElementById("explore-most-helpful").setAttribute("aria-pressed", String(sort === "helpful"));
     const pageSize = Number(document.getElementById("public-page-size").value || notesState.publicPageSize || 18);
     notesState.publicPageSize = pageSize;
     const requestVersion = ++publicBrowseRequestVersion;
@@ -3343,6 +3344,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadPublicNotes();
     });
     document.getElementById("public-collection").addEventListener("change", () => {
+        notesState.publicPage = 1;
+        loadPublicNotes();
+    });
+    document.getElementById("explore-most-helpful").addEventListener("click", () => {
+        document.getElementById("public-sort").value = "helpful";
         notesState.publicPage = 1;
         loadPublicNotes();
     });
