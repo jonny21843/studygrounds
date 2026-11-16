@@ -204,8 +204,8 @@ class TrendingExploreTests(ExploreMostHelpfulTests):
 
     def test_trending_filters_and_sorts_before_pagination(self):
         self.table.scan.return_value = {"Items": [
-            dict(self.note("older", 2, self.days_ago(80)), viewCount=100),
-            dict(self.note("fresh", 1, self.days_ago(1)), viewCount=6),
+            dict(self.note("older", 2, self.days_ago(80)), subject="Technology", viewCount=100),
+            dict(self.note("fresh", 1, self.days_ago(1)), subject="Technology", viewCount=6),
             dict(self.note("fresh-other-topic", 4, self.days_ago(1)), subject="History", viewCount=6),
             dict(self.note("private", 100, self.days_ago(0), visibility="private"), viewCount=999),
             dict(self.note("held", 100, self.days_ago(0)), moderationHold=True, viewCount=999),
