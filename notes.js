@@ -2219,6 +2219,28 @@ function refreshExploreTopicFilter() {
     topicSelect.value = normalizedTopics.includes(currentTopic) ? currentTopic : "";
 }
 
+let exploreReturnScrollY = null;
+
+function rememberExplorePosition() {
+    const grid = document.getElementById("public-grid");
+    if (notesState.activeView === "explore" && grid && !grid.hidden) {
+        exploreReturnScrollY = window.scrollY;
+    }
+}
+
+async function backToExplore() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("note");
+    url.searchParams.delete("contributor");
+    window.history.replaceState({}, "", url);
+    const restoreY = exploreReturnScrollY;
+    exploreReturnScrollY = null;
+    await loadPublicNotes();
+    if (typeof restoreY === "number" && notesState.activeView === "explore") {
+        window.requestAnimationFrame(() => window.scrollTo({top: restoreY, behavior: "instant"}));
+    }
+}
+
 function renderActivePublicFilters(query, subject, collection, sort) {
     const container = document.getElementById("public-active-filters");
     const items = [];
@@ -2396,7 +2418,10 @@ async function loadPublicNotes() {
                 </div>
             `;
 
-            const openCard = () => openPublicNote(note.noteId);
+            const openCard = () => {
+                rememberExplorePosition();
+                openPublicNote(note.noteId);
+            };
             card.querySelector(".public-note-seo-link")?.addEventListener("click", (event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -2413,6 +2438,7 @@ async function loadPublicNotes() {
             card.querySelector("[data-contributor-id]")?.addEventListener("click", (event) => {
                 event.preventDefault();
                 event.stopPropagation();
+                rememberExplorePosition();
                 openPublicContributor(note.contributorId);
             });
             card.addEventListener("click", (event) => {
@@ -2820,8 +2846,10 @@ function browsePublicTaxonomy(subject, topic = "") {
     ensureOption(topicSelect, selectedTopic);
     notesState.publicPage = 1;
 
+    exploreReturnScrollY = null;
     const url = new URL(window.location.href);
     url.searchParams.delete("note");
+    url.searchParams.delete("contributor");
     window.history.replaceState({}, "", url);
     setActiveView("explore");
 }
@@ -3370,6 +3398,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadPublicNotes();
     });
     document.getElementById("public-search-clear").addEventListener("click", () => {
+        exploreReturnScrollY = null;
         document.getElementById("public-search").value = "";
         document.getElementById("public-subject").value = "";
         document.getElementById("public-collection").value = "";
@@ -3434,18 +3463,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             loadPublicNotes();
         }
     });
-    document.getElementById("close-public-contributor").addEventListener("click", () => {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("contributor");
-        window.history.replaceState({}, "", url);
-        loadPublicNotes();
-    });
-    document.getElementById("close-public-note").addEventListener("click", () => {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("note");
-        window.history.replaceState({}, "", url);
-        loadPublicNotes();
-    });
+    document.getElementById("close-public-contributor").addEventListener("click", backToExplore);
+    document.getElementById("close-public-note").addEventListener("click", backToExplore);
 
     if (isAuthenticated()) {
         try {
