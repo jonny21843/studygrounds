@@ -41,8 +41,20 @@ def claims(event):
 
 
 def admin_email(event):
-    value = (claims(event).get("email") or "").strip().lower()
-    return value if value in admin_emails else None
+    user_claims = claims(event)
+    email = (user_claims.get("email") or "").strip().lower()
+    if email and email in admin_emails:
+        return email
+
+    username = (
+        user_claims.get("username")
+        or user_claims.get("cognito:username")
+        or ""
+    ).strip().lower()
+    if username and username in admin_emails:
+        return username
+
+    return None
 
 
 def require_admin(event):
