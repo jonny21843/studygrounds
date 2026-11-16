@@ -2538,9 +2538,8 @@ async function openPublicNote(noteId, updateUrl = true) {
 
         const note = data.note;
         const files = note.files || [];
-        const currentClaims = decodeJwtPayload(sessionStorage.getItem("id_token")) || {};
-        const currentUserId = String(currentClaims.sub || "");
-        const canReportNote = isAuthenticated() && currentUserId && currentUserId !== String(note.userId || "");
+        const ownsNote = notesState.notes.some((ownedNote) => ownedNote.noteId === note.noteId);
+        const canReportNote = isAuthenticated() && !ownsNote;
         const publishedDate = formatDate(note.publishedAt);
 
         if (updateUrl) {
