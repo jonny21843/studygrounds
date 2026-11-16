@@ -2956,3 +2956,32 @@ h3 {
     font-size: 0.79rem;
     line-height: 1.45;
 }
+
+/* Explore: removable filters and card-based category discovery */
+.active-filter-remove {
+    appearance: none;
+    border: 1px solid #c3caf9;
+    cursor: pointer;
+    font-family: inherit;
+    gap: 7px;
+}
+.active-filter-remove:hover { background: #e1e6ff; border-color: #8fa0ef; }
+.active-filter-remove:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }
+.explore-subject-chip { max-width: min(75%, 250px); }
+.explore-topic-link {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    padding: 2px 0;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-align: left;
+}
+.explore-topic-link:hover { color: #3449c5; text-decoration: underline; text-underline-offset: 2px; }
+.explore-topic-link:focus-visible,
+.explore-subject-chip:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }

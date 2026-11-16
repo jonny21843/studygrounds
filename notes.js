@@ -2237,9 +2237,33 @@ function renderActivePublicFilters(query, subject, collection, sort) {
         items.push(`Sort: ${labels[sort] || sort}`);
     }
 
+    const controls = [
+        ["query", "public-search"],
+        ["subject", "public-subject"],
+        ["collection", "public-collection"],
+        ["sort", "public-sort"]
+    ];
+    const activeValues = [query, subject, collection, sort !== "newest" ? sort : ""];
     container.innerHTML = items.length
-        ? items.map((item) => `<span class="active-filter-chip">${escapeHtml(item)}</span>`).join("")
-        : '<span class="active-filter-empty">No filters applied</span>';
+        ? items.map((item, index) => `<button type="button" class="active-filter-chip active-filter-remove" data-clear-filter="${controls[index]?.[0] || ""}" aria-label="Remove ${escapeHtml(item)} filter">${escapeHtml(item)} <span aria-hidden="true">×</span></button>`).join("")
+        : '<span class="active-filter-empty">Showing all subjects and topics</span>';
+    // Items may skip optional fields, so bind by label rather than array index.
+    const activeControls = controls.filter(([name], index) => Boolean(activeValues[index]));
+    container.querySelectorAll("[data-clear-filter]").forEach((button, index) => {
+        button.dataset.clearFilter = activeControls[index][0];
+        button.addEventListener("click", () => {
+            const field = button.dataset.clearFilter;
+            if (field === "query") document.getElementById("public-search").value = "";
+            if (field === "subject") {
+                document.getElementById("public-subject").value = "";
+                refreshExploreTopicFilter();
+            }
+            if (field === "collection") document.getElementById("public-collection").value = "";
+            if (field === "sort") document.getElementById("public-sort").value = "newest";
+            notesState.publicPage = 1;
+            loadPublicNotes();
+        });
+    });
 }
 
 async function loadPublicNotes() {
@@ -2352,13 +2376,13 @@ async function loadPublicNotes() {
 
             card.innerHTML = `
                 <div class="public-note-card-top">
-                    <span class="subject-chip">${escapeHtml(subjectLabel)}</span>
+                    <button class="subject-chip public-taxonomy-link explore-subject-chip" data-explore-subject="${escapeHtml(subjectLabel)}" type="button" aria-label="Explore subject ${escapeHtml(subjectLabel)}">${escapeHtml(subjectLabel)}</button>
                     <span class="note-date">${escapeHtml(formatDate(note.publishedAt))}</span>
                 </div>
 
                 <div class="public-note-card-body">
                     <h3><a class="public-note-seo-link" href="${escapeHtml(seoUrl)}">${escapeHtml(note.title || "Untitled note")}</a></h3>
-                    ${collectionLabel ? `<p class="public-note-collection">${escapeHtml(collectionLabel)}</p>` : ""}
+                    ${collectionLabel ? `<button type="button" class="public-note-collection explore-topic-link" data-explore-topic="${escapeHtml(collectionLabel)}" aria-label="Explore topic ${escapeHtml(collectionLabel)}">${escapeHtml(collectionLabel)}</button>` : ""}
                     <p class="public-note-description">${escapeHtml(note.description || "No description provided.")}</p>
                 </div>
 
@@ -2377,6 +2401,14 @@ async function loadPublicNotes() {
                 event.preventDefault();
                 event.stopPropagation();
                 openCard();
+            });
+            card.querySelector("[data-explore-subject]")?.addEventListener("click", (event) => {
+                event.stopPropagation();
+                browsePublicTaxonomy(note.subject);
+            });
+            card.querySelector("[data-explore-topic]")?.addEventListener("click", (event) => {
+                event.stopPropagation();
+                browsePublicTaxonomy(note.subject, note.collection);
             });
             card.querySelector("[data-contributor-id]")?.addEventListener("click", (event) => {
                 event.preventDefault();
