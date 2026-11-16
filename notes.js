@@ -2204,6 +2204,7 @@ async function loadPublicNotes() {
     const sort = document.getElementById("public-sort").value;
     const pageSize = Number(document.getElementById("public-page-size").value || notesState.publicPageSize || 18);
     notesState.publicPageSize = pageSize;
+    const requestVersion = ++publicBrowseRequestVersion;
 
     detail.hidden = true;
     document.querySelector(".explore-controls")?.removeAttribute("hidden");
@@ -2222,6 +2223,7 @@ async function loadPublicNotes() {
 
         const response = await fetch(url);
         const data = await response.json();
+        if (requestVersion !== publicBrowseRequestVersion) return;
         if (!response.ok) throw new Error(data.error || "Unable to load public notes.");
 
         const notes = data.notes || [];
@@ -2268,22 +2270,21 @@ async function loadPublicNotes() {
         document.getElementById("public-status").hidden = true;
 
         if (!notes.length) {
+            const hasFilters = Boolean(query || subject || collection);
             grid.innerHTML = `
                 <div class="empty-state">
-                    <h3>No public notes found</h3>
-                    <p>Try a different keyword or check back as the community library grows.</p>
+                    <h3>${hasFilters ? "No notes match these filters" : "No public notes yet"}</h3>
+                    <p>${hasFilters ? "Try another subject, topic, or keyword." : "Published study materials will appear here as the library grows."}</p>
+                    ${hasFilters ? '<button type="button" id="public-empty-reset" class="button button-secondary">Clear filters</button>' : ""}
                 </div>
             `;
+            grid.querySelector("#public-empty-reset")?.addEventListener("click", () => document.getElementById("public-search-clear").click());
             return;
         }
 
         notes.forEach((note) => {
             const card = document.createElement("article");
             card.className = "public-note-card";
-            card.tabIndex = 0;
-            card.setAttribute("role", "button");
-            card.setAttribute("aria-label", `Open ${note.title || "public note"}`);
-
             const subjectLabel = note.subject || "General";
             const collectionLabel = note.collection || "";
             const fileCount = Number(note.fileCount || 0);
@@ -2318,19 +2319,25 @@ async function loadPublicNotes() {
                 event.stopPropagation();
                 openCard();
             });
-            card.addEventListener("click", openCard);
-            card.addEventListener("keydown", (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    openCard();
-                }
+            card.addEventListener("click", (event) => {
+                if (!event.target.closest("a, button")) openCard();
             });
 
             grid.appendChild(card);
         });
     } catch (error) {
+        if (requestVersion !== publicBrowseRequestVersion) return;
         console.error("Unable to load public notes:", error);
-        setPublicStatus(error.message || "Unable to load public notes.", true);
+        document.getElementById("public-pagination").hidden = true;
+        setPublicStatus("Unable to load public notes. Please try again.", true);
+        grid.innerHTML = `
+            <div class="empty-state">
+                <h3>Explore is temporarily unavailable</h3>
+                <p>Check your connection and try loading the public notes again.</p>
+                <button class="button button-secondary" id="public-retry" type="button">Try again</button>
+            </div>
+        `;
+        grid.querySelector("#public-retry")?.addEventListener("click", loadPublicNotes);
     }
 }
 
@@ -2596,6 +2603,35 @@ async function applyModerationAction(reportId, action) {
     }
 }
 
+let publicBrowseRequestVersion = 0;
+
+// Navigate from a note into the existing subject/topic filters without extra endpoints.
+function browsePublicTaxonomy(subject, topic = "") {
+    const subjectSelect = document.getElementById("public-subject");
+    const topicSelect = document.getElementById("public-collection");
+    if (!subjectSelect || !topicSelect) return;
+
+    const selectedSubject = String(subject || "").trim();
+    const selectedTopic = String(topic || "").trim();
+    const ensureOption = (select, value) => {
+        if (value && !Array.from(select.options).some((option) => option.value === value)) {
+            select.add(new Option(value, value));
+        }
+        select.value = value;
+    };
+
+    document.getElementById("public-search").value = "";
+    ensureOption(subjectSelect, selectedSubject);
+    refreshExploreTopicFilter();
+    ensureOption(topicSelect, selectedTopic);
+    notesState.publicPage = 1;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete("note");
+    window.history.replaceState({}, "", url);
+    setActiveView("explore");
+}
+
 // Recommendations use the existing public listing endpoint, which only exposes safe published notes.
 // This is a lightweight discovery enhancement, not a personalized ranking engine.
 async function loadRelatedPublicNotes(note) {
@@ -2655,6 +2691,7 @@ async function loadRelatedPublicNotes(note) {
             </div>
         `;
         container.hidden = false;
+        container.querySelector("#browse-related-subject")?.addEventListener("click", () => browsePublicTaxonomy(note.subject));
         container.querySelectorAll("[data-related-id]").forEach((link) => {
             link.addEventListener("click", (event) => {
                 event.preventDefault();
@@ -2671,6 +2708,7 @@ async function loadRelatedPublicNotes(note) {
 }
 
 async function openPublicNote(noteId, updateUrl = true) {
+    ++publicBrowseRequestVersion;
     const grid = document.getElementById("public-grid");
     const detail = document.getElementById("public-note-detail");
     const content = document.getElementById("public-note-content");
@@ -2714,9 +2752,9 @@ async function openPublicNote(noteId, updateUrl = true) {
         content.innerHTML = `
             <section class="public-note-hero">
                 <div class="public-note-hero-main">
-                    <div class="public-note-taxonomy">
-                        ${note.subject ? `<span class="subject-chip">${escapeHtml(note.subject)}</span>` : ""}
-                        ${note.collection ? `<span class="public-topic-label">${escapeHtml(note.collection)}</span>` : ""}
+                    <div class="public-note-taxonomy" aria-label="Browse note categories">
+                        ${note.subject ? `<button class="subject-chip public-taxonomy-link" id="browse-note-subject" type="button" aria-label="Explore subject ${escapeHtml(note.subject)}">${escapeHtml(note.subject)}</button>` : ""}
+                        ${note.collection ? `<button class="public-topic-label public-taxonomy-link" id="browse-note-topic" type="button" aria-label="Explore topic ${escapeHtml(note.collection)} in ${escapeHtml(note.subject || "all subjects")}">${escapeHtml(note.collection)}</button>` : ""}
                     </div>
                     <h2>${escapeHtml(note.title)}</h2>
                     <p class="public-note-full-description">${escapeHtml(note.description || "No description provided.")}</p>
@@ -2806,6 +2844,8 @@ async function openPublicNote(noteId, updateUrl = true) {
         document.getElementById("public-status").hidden = true;
         detail.hidden = false;
         loadRelatedPublicNotes(note);
+        document.getElementById("browse-note-subject")?.addEventListener("click", () => browsePublicTaxonomy(note.subject));
+        document.getElementById("browse-note-topic")?.addEventListener("click", () => browsePublicTaxonomy(note.subject, note.collection));
         document.getElementById("share-public-note")?.addEventListener("click", (event) => sharePublicNote(noteId, note.title, event));
         document.getElementById("report-note-trigger")?.addEventListener("click", openReportNoteModal);
         document.getElementById("report-note-submit")?.addEventListener("click", () => submitPublicNoteReport(noteId));

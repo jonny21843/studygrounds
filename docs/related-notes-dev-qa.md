@@ -39,3 +39,15 @@ Launch-readiness QA (auth/session, mobile/a11y, empty/error states), followed by
 - [ ] "Browse [subject]" filters Explore to the same subject
 - [ ] Keyboard focus is visible on Browse and note-title links; long titles and descriptions wrap safely
 - [ ] Related-card navigation works after opening another recommended note
+
+## Next discovery / launch-readiness checks
+
+- [ ] Click the subject chip from a note: Explore opens and filters to the same subject
+- [ ] Click the topic chip from a note: Explore opens with both subject and topic selected
+- [ ] Directly open a shared note in a new signed-out browser and test the category links
+- [ ] Rapidly change search, sorting and filters under a throttled connection: stale responses must not replace newer results
+- [ ] Filter to no matching notes: useful empty state and working Clear filters button
+- [ ] Simulate a failed Explore API request: visible error, working Try again, pagination hidden
+- [ ] Explore cards have one keyboard tab stop for the linked title rather than a button containing a link
+- [ ] Test 320px mobile width with long note titles and text zoom at 200%
+- [ ] Confirm report, preview, download, and moderation protections are unaffected

@@ -2769,3 +2769,29 @@ h3 {
         transition: none;
     }
 }
+
+/* Accessible subject/topic exploration from public note detail. */
+.public-taxonomy-link {
+    appearance: none;
+    border: 1px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    line-height: inherit;
+}
+.public-taxonomy-link:hover {
+    border-color: #a9b4f7;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.public-taxonomy-link:focus-visible {
+    outline: 3px solid #3449c5;
+    outline-offset: 3px;
+}
+.public-topic-label.public-taxonomy-link {
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: #f0f3fb;
+}
+.public-notes-grid .empty-state .button {
+    margin-top: 16px;
+}
