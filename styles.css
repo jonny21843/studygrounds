@@ -2820,3 +2820,28 @@ h3 {
     outline: 3px solid #3449c5;
     outline-offset: 3px;
 }
+
+/* Public contributor profiles */
+.contributor-detail { padding: 0; overflow: hidden; }
+#close-public-contributor { margin: 18px 20px 0; }
+#public-contributor-content { padding: 18px 28px 30px; }
+.contributor-profile-hero { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding-bottom: 24px; border-bottom: 1px solid #e4e7ec; }
+.contributor-avatar { display: grid; place-items: center; flex: 0 0 76px; width: 76px; height: 76px; border-radius: 20px; background: #eef0ff; color: #3440a5; font-size: 2rem; font-weight: 800; }
+.contributor-profile-main { flex: 1 1 200px; min-width: 0; }
+.contributor-profile-main h2 { margin: 0 0 8px; overflow-wrap: anywhere; }
+.contributor-profile-main p:last-child { margin: 0; color: #667085; }
+.contributor-taxonomy { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; padding: 24px 0; border-bottom: 1px solid #e4e7ec; }
+.contributor-taxonomy h3, .contributor-notes-section h3 { margin-bottom: 12px; }
+.contributor-chips { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.contributor-chips .related-public-topic { padding: 6px 10px; background: #f3f5fa; border-radius: 999px; }
+.contributor-notes-section { padding-top: 24px; }
+.contributor-notes-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.contributor-pagination { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; padding: 24px 0 0; }
+.public-contributor-link { color: inherit; font-weight: 700; text-decoration: underline; text-decoration-color: #b6bdf8; text-underline-offset: 3px; }
+.public-contributor-link:hover { color: #3449c5; }
+.public-contributor-link:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }
+@media (max-width: 760px) {
+    #public-contributor-content { padding: 20px; }
+    .contributor-profile-hero { align-items: flex-start; }
+    .contributor-taxonomy, .contributor-notes-grid { grid-template-columns: 1fr; }
+}

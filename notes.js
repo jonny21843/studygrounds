@@ -2230,6 +2230,7 @@ function renderActivePublicFilters(query, subject, collection, sort) {
 }
 
 async function loadPublicNotes() {
+    document.getElementById("public-contributor-detail").hidden = true;
     const grid = document.getElementById("public-grid");
     const detail = document.getElementById("public-note-detail");
     const query = document.getElementById("public-search").value.trim();
@@ -2339,7 +2340,7 @@ async function loadPublicNotes() {
                 </div>
 
                 <div class="public-note-card-footer">
-                    <span>By ${escapeHtml(note.publicAuthor || "Community member")}</span>
+                    <span>By ${note.contributorId ? `<a class="public-contributor-link" href="${escapeHtml(contributorShareUrl(note.contributorId))}" data-contributor-id="${escapeHtml(note.contributorId)}">${escapeHtml(note.publicAuthor || "Community member")}</a>` : escapeHtml(note.publicAuthor || "Community member")}</span>
                     <div class="public-note-stats">
                         <span>${fileCount} file${fileCount === 1 ? "" : "s"}</span>
                         <span>${viewCount.toLocaleString()} view${viewCount === 1 ? "" : "s"}</span>
@@ -2352,6 +2353,11 @@ async function loadPublicNotes() {
                 event.preventDefault();
                 event.stopPropagation();
                 openCard();
+            });
+            card.querySelector("[data-contributor-id]")?.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                openPublicContributor(note.contributorId);
             });
             card.addEventListener("click", (event) => {
                 if (!event.target.closest("a, button")) openCard();
@@ -2381,6 +2387,104 @@ function publicNoteSlug(title) {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 80) || "study-note";
+}
+
+function contributorShareUrl(contributorId) {
+    const url = new URL(window.location.origin + "/");
+    url.searchParams.set("contributor", contributorId);
+    return url.toString();
+}
+
+async function openPublicContributor(contributorId, updateUrl = true, requestedPage = 1) {
+    if (!/^[0-9a-f]{64}$/.test(String(contributorId || ""))) return;
+    const version = ++publicBrowseRequestVersion;
+    const panel = document.getElementById("public-contributor-detail");
+    const content = document.getElementById("public-contributor-content");
+    const noteDetail = document.getElementById("public-note-detail");
+    const grid = document.getElementById("public-grid");
+
+    noteDetail.hidden = true;
+    document.querySelector(".explore-controls")?.setAttribute("hidden", "");
+    document.getElementById("public-pagination").hidden = true;
+    document.getElementById("public-status").hidden = true;
+    grid.hidden = true;
+    panel.hidden = false;
+    content.innerHTML = '<div class="status-card" role="status">Loading contributor profile...</div>';
+
+    try {
+        const url = new URL(apiUrl(`/api/public/contributors/${encodeURIComponent(contributorId)}`));
+        url.searchParams.set("page", String(requestedPage));
+        const response = await fetch(url);
+        const data = await response.json();
+        if (version !== publicBrowseRequestVersion) return;
+        if (!response.ok) throw new Error(data.error || "Unable to load contributor.");
+
+        const contributor = data.contributor;
+        const noteList = data.notes || [];
+        content.innerHTML = `
+            <header class="contributor-profile-hero">
+                <div class="contributor-avatar" aria-hidden="true">${escapeHtml((contributor.displayName || "C").slice(0, 1).toUpperCase())}</div>
+                <div class="contributor-profile-main">
+                    <p class="eyebrow">Community contributor</p>
+                    <h2>${escapeHtml(contributor.displayName || "Community member")}</h2>
+                    <p>${Number(contributor.contributionCount || 0).toLocaleString()} published ${Number(contributor.contributionCount || 0) === 1 ? "note" : "notes"}</p>
+                </div>
+                <button type="button" class="button button-secondary" id="share-contributor-profile">Copy Profile Link</button>
+            </header>
+            <section class="contributor-taxonomy" aria-label="Contributor subjects and topics">
+                <div>
+                    <h3>Subjects</h3>
+                    <div class="contributor-chips">${(contributor.subjects || []).length ? contributor.subjects.map((item) => `<button type="button" class="subject-chip public-taxonomy-link" data-profile-subject="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("") : '<span class="status-text">No subjects yet</span>'}</div>
+                </div>
+                <div>
+                    <h3>Topics</h3>
+                    <div class="contributor-chips">${(contributor.topics || []).length ? contributor.topics.map((item) => `<span class="related-public-topic">${escapeHtml(item)}</span>`).join("") : '<span class="status-text">No topics yet</span>'}</div>
+                </div>
+            </section>
+            <section class="contributor-notes-section">
+                <h3>Published notes</h3>
+                <div class="contributor-notes-grid">
+                    ${noteList.map((note) => `
+                        <article class="related-public-card">
+                            <div class="related-public-meta"><span class="subject-chip">${escapeHtml(note.subject || "General")}</span>${note.collection ? `<span class="related-public-topic">${escapeHtml(note.collection)}</span>` : ""}</div>
+                            <h4><a href="${escapeHtml(publicNoteSeoUrl(note.noteId, note.title))}" data-profile-note-id="${escapeHtml(note.noteId)}">${escapeHtml(note.title || "Untitled note")}</a></h4>
+                            <p class="related-public-description">${escapeHtml(note.description || "No description provided.")}</p>
+                            <span class="related-public-author">${escapeHtml(formatDate(note.publishedAt))}</span>
+                        </article>
+                    `).join("")}
+                </div>
+                ${data.totalPages > 1 ? `<nav class="contributor-pagination" aria-label="Contributor notes pages"><button type="button" class="button button-secondary" id="contributor-prev" ${data.page <= 1 ? "disabled" : ""}>Previous</button><span>Page ${data.page} of ${data.totalPages}</span><button type="button" class="button button-secondary" id="contributor-next" ${data.page >= data.totalPages ? "disabled" : ""}>Next</button></nav>` : ""}
+            </section>
+        `;
+        if (updateUrl) {
+            const share = new URL(contributorShareUrl(contributorId));
+            window.history.replaceState({}, "", share);
+        }
+        content.querySelector("#share-contributor-profile")?.addEventListener("click", async (event) => {
+            const share = contributorShareUrl(contributorId);
+            try {
+                await navigator.clipboard.writeText(share);
+                showCopyToast(event);
+            } catch (error) {
+                window.prompt("Copy profile link:", share);
+            }
+        });
+        content.querySelectorAll("[data-profile-note-id]").forEach((link) => {
+            link.addEventListener("click", (event) => {
+                event.preventDefault();
+                openPublicNote(link.dataset.profileNoteId);
+            });
+        });
+        content.querySelectorAll("[data-profile-subject]").forEach((button) => {
+            button.addEventListener("click", () => browsePublicTaxonomy(button.dataset.profileSubject));
+        });
+        content.querySelector("#contributor-prev")?.addEventListener("click", () => openPublicContributor(contributorId, false, data.page - 1));
+        content.querySelector("#contributor-next")?.addEventListener("click", () => openPublicContributor(contributorId, false, data.page + 1));
+    } catch (error) {
+        if (version !== publicBrowseRequestVersion) return;
+        content.innerHTML = `<div class="empty-state"><h3>Contributor unavailable</h3><p>${escapeHtml(error.message || "Unable to load this contributor.")}</p><button type="button" class="button button-secondary" id="retry-contributor-profile">Try again</button></div>`;
+        content.querySelector("#retry-contributor-profile")?.addEventListener("click", () => openPublicContributor(contributorId, updateUrl, requestedPage));
+    }
 }
 
 function publicNoteSeoUrl(noteId, title) {
@@ -2719,13 +2823,19 @@ async function loadRelatedPublicNotes(note) {
                         </div>
                         <h4><a href="${escapeHtml(publicNoteSeoUrl(candidate.noteId, candidate.title))}" data-related-id="${escapeHtml(candidate.noteId)}">${escapeHtml(candidate.title || "Untitled note")} <span aria-hidden="true">↗</span></a></h4>
                         <p class="related-public-description">${escapeHtml(candidate.description || "No description provided.")}</p>
-                        <span class="related-public-author">By ${escapeHtml(candidate.publicAuthor || "Community member")}</span>
+                        <span class="related-public-author">By ${candidate.contributorId ? `<a class="public-contributor-link" href="${escapeHtml(contributorShareUrl(candidate.contributorId))}" data-related-contributor="${escapeHtml(candidate.contributorId)}">${escapeHtml(candidate.publicAuthor || "Community member")}</a>` : escapeHtml(candidate.publicAuthor || "Community member")}</span>
                     </article>
                 `).join("")}
             </div>
         `;
         container.hidden = false;
         container.querySelector("#browse-related-subject")?.addEventListener("click", () => browsePublicTaxonomy(note.subject));
+        container.querySelectorAll("[data-related-contributor]").forEach((link) => {
+            link.addEventListener("click", (event) => {
+                event.preventDefault();
+                openPublicContributor(link.dataset.relatedContributor);
+            });
+        });
         container.querySelectorAll("[data-related-id]").forEach((link) => {
             link.addEventListener("click", (event) => {
                 event.preventDefault();
@@ -2743,6 +2853,7 @@ async function loadRelatedPublicNotes(note) {
 
 async function openPublicNote(noteId, updateUrl = true) {
     ++publicBrowseRequestVersion;
+    document.getElementById("public-contributor-detail").hidden = true;
     const grid = document.getElementById("public-grid");
     const detail = document.getElementById("public-note-detail");
     const content = document.getElementById("public-note-content");
@@ -2796,7 +2907,7 @@ async function openPublicNote(noteId, updateUrl = true) {
 
                 <div class="public-note-hero-side">
                     <div class="public-note-byline">
-                        <strong>${escapeHtml(note.publicAuthor || "Community member")}</strong>
+                        ${note.contributorId ? `<a class="public-contributor-link" id="note-contributor-link" href="${escapeHtml(contributorShareUrl(note.contributorId))}">${escapeHtml(note.publicAuthor || "Community member")}</a>` : `<strong>${escapeHtml(note.publicAuthor || "Community member")}</strong>`}
                         <span>${Number(note.viewCount || 0)} view${Number(note.viewCount || 0) === 1 ? "" : "s"}</span>
                         ${publishedDate ? `<span>Published ${escapeHtml(publishedDate)}</span>` : ""}
                     </div>
@@ -2880,6 +2991,10 @@ async function openPublicNote(noteId, updateUrl = true) {
         loadRelatedPublicNotes(note);
         document.getElementById("browse-note-subject")?.addEventListener("click", () => browsePublicTaxonomy(note.subject));
         document.getElementById("browse-note-topic")?.addEventListener("click", () => browsePublicTaxonomy(note.subject, note.collection));
+        document.getElementById("note-contributor-link")?.addEventListener("click", (event) => {
+            event.preventDefault();
+            openPublicContributor(note.contributorId);
+        });
         document.getElementById("share-public-note")?.addEventListener("click", (event) => sharePublicNote(noteId, note.title, event));
         document.getElementById("report-note-trigger")?.addEventListener("click", openReportNoteModal);
         document.getElementById("report-note-submit")?.addEventListener("click", () => submitPublicNoteReport(noteId));
@@ -3022,6 +3137,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             loadPublicNotes();
         }
     });
+    document.getElementById("close-public-contributor").addEventListener("click", () => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("contributor");
+        window.history.replaceState({}, "", url);
+        loadPublicNotes();
+    });
     document.getElementById("close-public-note").addEventListener("click", () => {
         const url = new URL(window.location.href);
         url.searchParams.delete("note");
@@ -3042,8 +3163,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         await loadNotes();
     }
 
-    const sharedNoteId = new URL(window.location.href).searchParams.get("note");
-    if (sharedNoteId) {
+    const sharedParams = new URL(window.location.href).searchParams;
+    const sharedNoteId = sharedParams.get("note");
+    const sharedContributorId = sharedParams.get("contributor");
+    if (sharedNoteId || sharedContributorId) {
         notesState.activeView = "explore";
         document.getElementById("my-notes-view").hidden = true;
         document.getElementById("settings-view").hidden = true;
@@ -3057,6 +3180,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("explore-tab").classList.add("active");
         document.getElementById("my-notes-tab").removeAttribute("aria-current");
         document.getElementById("explore-tab").setAttribute("aria-current", "page");
-        await openPublicNote(sharedNoteId, false);
+        if (sharedNoteId) await openPublicNote(sharedNoteId, false);
+        else await openPublicContributor(sharedContributorId, false);
     }
 });
