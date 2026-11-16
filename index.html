@@ -208,6 +208,7 @@
                             <option value="title">Title A–Z</option>
                             <option value="views">Most viewed</option>
                             <option value="helpful">Most helpful</option>
+                            <option value="trending">Trending</option>
                         </select>
                         <select id="public-page-size" aria-label="Notes per page">
                             <option value="12">12 per page</option>
@@ -223,7 +224,11 @@
                     <div>
                         <strong id="public-result-summary">Loading notes...</strong>
                         <div id="public-active-filters" class="active-filter-list"></div>
-                        <button id="explore-most-helpful" class="explore-most-helpful" type="button" aria-pressed="false">♡ Community favorites</button>
+                        <div class="explore-discovery-actions" role="group" aria-label="Quick discovery sorts">
+                            <button id="explore-trending" class="explore-discovery-button" type="button" aria-pressed="false">Trending</button>
+                            <button id="explore-most-helpful" class="explore-discovery-button" type="button" aria-pressed="false">♡ Community favorites</button>
+                        </div>
+                        <p id="explore-ranking-explanation" class="explore-ranking-explanation" hidden></p>
                     </div>
                     <span id="public-page-summary" class="status-text"></span>
                 </div>

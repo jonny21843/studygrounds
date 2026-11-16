@@ -2231,7 +2231,8 @@ function renderActivePublicFilters(query, subject, collection, sort) {
             oldest: "Oldest",
             title: "Title A–Z",
             views: "Most viewed",
-            helpful: "Most helpful"
+            helpful: "Most helpful",
+            trending: "Trending"
         };
         items.push(`Sort: ${labels[sort] || sort}`);
     }
@@ -2250,6 +2251,14 @@ async function loadPublicNotes() {
     const collection = document.getElementById("public-collection").value;
     const sort = document.getElementById("public-sort").value;
     document.getElementById("explore-most-helpful").setAttribute("aria-pressed", String(sort === "helpful"));
+    document.getElementById("explore-trending").setAttribute("aria-pressed", String(sort === "trending"));
+    const explanation = document.getElementById("explore-ranking-explanation");
+    const descriptions = {
+        trending: "Trending balances helpful votes, lifetime views, and publication recency. It does not track recent clicks or votes.",
+        helpful: "Community favorites are ranked by helpful votes, with newer notes breaking ties."
+    };
+    explanation.textContent = descriptions[sort] || "";
+    explanation.hidden = !descriptions[sort];
     const pageSize = Number(document.getElementById("public-page-size").value || notesState.publicPageSize || 18);
     notesState.publicPageSize = pageSize;
     const requestVersion = ++publicBrowseRequestVersion;
@@ -3347,11 +3356,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         notesState.publicPage = 1;
         loadPublicNotes();
     });
-    document.getElementById("explore-most-helpful").addEventListener("click", () => {
-        document.getElementById("public-sort").value = "helpful";
+    const activateDiscoverySort = (sort) => {
+        document.getElementById("public-sort").value = sort;
         notesState.publicPage = 1;
         loadPublicNotes();
-    });
+    };
+    document.getElementById("explore-most-helpful").addEventListener("click", () => activateDiscoverySort("helpful"));
+    document.getElementById("explore-trending").addEventListener("click", () => activateDiscoverySort("trending"));
     document.getElementById("public-sort").addEventListener("change", () => {
         notesState.publicPage = 1;
         loadPublicNotes();

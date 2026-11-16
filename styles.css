@@ -2917,3 +2917,42 @@ h3 {
     border-color: #7e92f0;
 }
 .explore-most-helpful:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }
+
+/* Explicit discovery-mode controls keep ranking choices visible to readers. */
+.explore-discovery-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+.explore-discovery-button {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 7px 12px;
+    border: 1px solid #c6cef2;
+    border-radius: 999px;
+    background: #fff;
+    color: #394aa3;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 720;
+    cursor: pointer;
+}
+.explore-discovery-button:hover,
+.explore-discovery-button[aria-pressed="true"] {
+    border-color: #8394e9;
+    background: #eef0ff;
+}
+.explore-discovery-button:focus-visible {
+    outline: 3px solid #3449c5;
+    outline-offset: 3px;
+}
+.explore-ranking-explanation {
+    max-width: 600px;
+    margin: 8px 0 0;
+    color: #58677e;
+    font-size: 0.79rem;
+    line-height: 1.45;
+}
