@@ -1,0 +1,92 @@
+name: Deploy StudyGrounds DEV frontend
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - develop
+    paths:
+      - "index.html"
+      - "study-notes.html"
+      - "robots.txt"
+      - "sitemap.xml"
+      - "styles.css"
+      - "auth.js"
+      - "notes.js"
+      - "tabs.js"
+      - "auth/**"
+      - ".github/workflows/deploy-dev-frontend.yml"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: studygrounds-development-frontend
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy frontend to development
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Build static deployment directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/auth
+          cp index.html study-notes.html robots.txt sitemap.xml styles.css auth.js notes.js tabs.js dist/
+          cp auth/*.html auth/*.js dist/auth/
+
+          cat > dist/config.js <<'EOF'
+          window.BUCKET_URL = "";
+          window.BUCKET_NAME = "";
+
+          const APP_CONFIG = {
+              cognitoDomain: "https://us-east-2sz3qwdfwv.auth.us-east-2.amazoncognito.com",
+              cognitoClientId: "3t79knetd0pdav5jsso0osfb1e",
+              cognitoRedirectUri: window.location.origin + "/auth/callback.html",
+              cognitoLogoutUri: window.location.origin + "/",
+              apiBaseUrl: "https://nxa9uz2cv0.execute-api.us-east-2.amazonaws.com",
+              adminEmails: ["jonathan.feagans@outlook.com"]
+          };
+          EOF
+
+      - name: Sync frontend to DEV S3
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3 sync dist/ s3://studygrounds-frontend-frontendbucket-5jnigqnmskgt/ \
+            --delete \
+            --cache-control "public,max-age=300"
+
+      - name: Prevent HTML and config caching
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3 cp dist/index.html s3://studygrounds-frontend-frontendbucket-5jnigqnmskgt/index.html \
+            --content-type "text/html" \
+            --cache-control "no-cache,no-store,must-revalidate"
+          aws s3 cp dist/config.js s3://studygrounds-frontend-frontendbucket-5jnigqnmskgt/config.js \
+            --content-type "application/javascript" \
+            --cache-control "no-cache,no-store,must-revalidate"
+          aws s3 cp dist/auth/callback.html s3://studygrounds-frontend-frontendbucket-5jnigqnmskgt/auth/callback.html \
+            --content-type "text/html" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate DEV CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id E1O78RFI5U6N8S \
+            --paths "/*"
