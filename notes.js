@@ -2352,6 +2352,35 @@ async function sharePublicNote(noteId, title, event = null) {
 }
 
 
+async function getPublicNoteReportStatus(noteId) {
+    try {
+        const response = await authenticatedFetch(
+            `/api/public/notes/${encodeURIComponent(noteId)}/report`
+        );
+        const data = await response.json();
+        if (!response.ok) return {reported: false, report: null};
+        return {
+            reported: Boolean(data.reported),
+            report: data.report || null
+        };
+    } catch {
+        return {reported: false, report: null};
+    }
+}
+
+function closeReportNoteModal() {
+    const modal = document.getElementById("report-note-modal");
+    if (modal) modal.hidden = true;
+}
+
+function openReportNoteModal() {
+    const modal = document.getElementById("report-note-modal");
+    if (modal) {
+        modal.hidden = false;
+        document.getElementById("report-note-reason")?.focus();
+    }
+}
+
 async function submitPublicNoteReport(noteId) {
     const reasonElement = document.getElementById("report-note-reason");
     const detailsElement = document.getElementById("report-note-details");
@@ -2385,13 +2414,28 @@ async function submitPublicNoteReport(noteId) {
             }
         );
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Unable to submit report.");
+        if (!response.ok) {
+            if (response.status === 409 && data.reported) {
+                const trigger = document.getElementById("report-note-trigger");
+                if (trigger) {
+                    trigger.textContent = "Already reported";
+                    trigger.disabled = true;
+                }
+                closeReportNoteModal();
+                showAppNotice("You already reported this note.", "info");
+                return;
+            }
+            throw new Error(data.error || "Unable to submit report.");
+        }
 
-        if (statusElement) {
-            statusElement.textContent = data.message || "Report submitted.";
-            statusElement.className = "status-text success";
+        const trigger = document.getElementById("report-note-trigger");
+        if (trigger) {
+            trigger.textContent = "Already reported";
+            trigger.disabled = true;
         }
         if (detailsElement) detailsElement.value = "";
+        closeReportNoteModal();
+        showAppNotice(data.message || "Report submitted.", "success", 5200);
     } catch (error) {
         if (statusElement) {
             statusElement.textContent = error.message || "Unable to submit report.";
@@ -2540,6 +2584,9 @@ async function openPublicNote(noteId, updateUrl = true) {
         const files = note.files || [];
         const ownsNote = notesState.notes.some((ownedNote) => ownedNote.noteId === note.noteId);
         const canReportNote = isAuthenticated() && !ownsNote;
+        const reportState = canReportNote
+            ? await getPublicNoteReportStatus(note.noteId)
+            : {reported: false, report: null};
         const publishedDate = formatDate(note.publishedAt);
 
         if (updateUrl) {
@@ -2583,28 +2630,52 @@ async function openPublicNote(noteId, updateUrl = true) {
                     </div>
                     <button id="share-public-note" class="button button-secondary" type="button">Copy Share Link</button>
                     ${canReportNote ? `
-                        <details class="report-note-panel">
-                            <summary>Report note</summary>
-                            <label>
-                                Reason
-                                <select id="report-note-reason">
-                                    <option value="">Choose a reason</option>
-                                    <option value="spam">Spam</option>
-                                    <option value="inappropriate">Inappropriate content</option>
-                                    <option value="copyright">Copyright concern</option>
-                                    <option value="misleading">Misleading or inaccurate</option>
-                                    <option value="other">Other</option>
-                                </select>
-                            </label>
-                            <label>
-                                Details (optional)
-                                <textarea id="report-note-details" maxlength="1000" rows="3" placeholder="Add context for the moderation team."></textarea>
-                            </label>
-                            <div class="form-actions">
-                                <span id="report-note-status" class="status-text" aria-live="polite"></span>
-                                <button id="report-note-submit" class="button button-secondary" type="button">Submit report</button>
+                        <button
+                            id="report-note-trigger"
+                            class="report-note-trigger"
+                            type="button"
+                            ${reportState.reported ? "disabled" : ""}
+                        >
+                            ${reportState.reported ? "Already reported" : "Report note"}
+                        </button>
+
+                        ${reportState.reported ? "" : `
+                            <div id="report-note-modal" class="report-note-modal" hidden>
+                                <button class="report-note-backdrop" type="button" aria-label="Close report form"></button>
+                                <section class="report-note-dialog" role="dialog" aria-modal="true" aria-labelledby="report-note-title">
+                                    <div class="report-note-dialog-heading">
+                                        <div>
+                                            <p class="eyebrow">Community safety</p>
+                                            <h3 id="report-note-title">Report this note</h3>
+                                            <p>Tell us what is wrong and the moderation team will review it.</p>
+                                        </div>
+                                        <button id="report-note-close" class="button button-text" type="button" aria-label="Close">Close</button>
+                                    </div>
+                                    <label>
+                                        Reason
+                                        <select id="report-note-reason">
+                                            <option value="">Choose a reason</option>
+                                            <option value="spam">Spam</option>
+                                            <option value="inappropriate">Inappropriate content</option>
+                                            <option value="copyright">Copyright concern</option>
+                                            <option value="misleading">Misleading or inaccurate</option>
+                                            <option value="other">Other</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        Details <span>(optional)</span>
+                                        <textarea id="report-note-details" maxlength="1000" rows="4" placeholder="Add context for the moderation team."></textarea>
+                                    </label>
+                                    <div class="report-note-dialog-actions">
+                                        <span id="report-note-status" class="status-text" aria-live="polite"></span>
+                                        <div>
+                                            <button id="report-note-cancel" class="button button-text" type="button">Cancel</button>
+                                            <button id="report-note-submit" class="button button-primary" type="button">Submit report</button>
+                                        </div>
+                                    </div>
+                                </section>
                             </div>
-                        </details>
+                        `}
                     ` : ""}
                 </div>
             </section>
@@ -2633,7 +2704,11 @@ async function openPublicNote(noteId, updateUrl = true) {
         document.getElementById("public-status").hidden = true;
         detail.hidden = false;
         document.getElementById("share-public-note")?.addEventListener("click", (event) => sharePublicNote(noteId, note.title, event));
+        document.getElementById("report-note-trigger")?.addEventListener("click", openReportNoteModal);
         document.getElementById("report-note-submit")?.addEventListener("click", () => submitPublicNoteReport(noteId));
+        document.getElementById("report-note-close")?.addEventListener("click", closeReportNoteModal);
+        document.getElementById("report-note-cancel")?.addEventListener("click", closeReportNoteModal);
+        document.querySelector(".report-note-backdrop")?.addEventListener("click", closeReportNoteModal);
         await Promise.all([
             loadNativeExcelPreviews(noteId),
             loadNativePowerPointPreviews(noteId),
