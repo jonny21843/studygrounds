@@ -96,6 +96,22 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  ModerationReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-moderation", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: reportId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: reportId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
   NotesBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -662,6 +678,68 @@ Resources:
               detail-type:
                 - GuardDuty Malware Protection Object Scan Result
 
+  ReportPublicNoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/public/report/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          REPORTS_TABLE: !Ref ModerationReportsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ModerationReportsTable
+      Events:
+        ReportPublicNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/report
+            Method: POST
+            PayloadFormatVersion: "2.0"
+
+  AdminModerationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/admin/moderation/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          REPORTS_TABLE: !Ref ModerationReportsTable
+          ADMIN_EMAILS: !Ref AdminEmails
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ModerationReportsTable
+      Events:
+        ListModeration:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/moderation
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        UpdateModeration:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/moderation/{reportId}
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
   PublicSeoFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -777,3 +855,8 @@ Outputs:
   NotesBucketName:
     Description: Private S3 bucket used for note source files.
     Value: !Ref NotesBucket
+
+  ModerationReportsTableName:
+    Description: DynamoDB table used for public note reports and moderation actions.
+    Value: !Ref ModerationReportsTable
+
