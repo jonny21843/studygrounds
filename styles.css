@@ -2624,3 +2624,54 @@ h3 {
 .moderation-owner-notice span {
     color: #7a271a;
 }
+
+/* Related public notes: responsive cards using ordinary accessible links. */
+.related-public-section {
+    margin-top: 28px;
+    padding-top: 24px;
+    border-top: 1px solid #e5eaf0;
+}
+
+.related-public-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.related-public-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid #e5eaf0;
+    border-radius: 12px;
+    background: #fff;
+}
+
+.related-public-card h4 {
+    margin: 12px 0 8px;
+    overflow-wrap: anywhere;
+}
+
+.related-public-card h4 a {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.related-public-card h4 a:focus-visible {
+    outline: 3px solid #2563eb;
+    outline-offset: 4px;
+    border-radius: 2px;
+}
+
+.related-public-card p {
+    margin: 0 0 12px;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.related-public-author {
+    font-size: 0.82rem;
+    color: #526173;
+}
