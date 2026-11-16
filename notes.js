@@ -2538,6 +2538,9 @@ async function openPublicNote(noteId, updateUrl = true) {
 
         const note = data.note;
         const files = note.files || [];
+        const currentClaims = decodeJwtPayload(sessionStorage.getItem("id_token")) || {};
+        const currentUserId = String(currentClaims.sub || "");
+        const canReportNote = isAuthenticated() && currentUserId && currentUserId !== String(note.userId || "");
         const publishedDate = formatDate(note.publishedAt);
 
         if (updateUrl) {
@@ -2580,7 +2583,7 @@ async function openPublicNote(noteId, updateUrl = true) {
                         ${publishedDate ? `<span>Published ${escapeHtml(publishedDate)}</span>` : ""}
                     </div>
                     <button id="share-public-note" class="button button-secondary" type="button">Copy Share Link</button>
-                    ${isAuthenticated() ? `
+                    ${canReportNote ? `
                         <details class="report-note-panel">
                             <summary>Report note</summary>
                             <label>
