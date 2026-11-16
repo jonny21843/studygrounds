@@ -860,12 +860,6 @@ Resources:
               Resource: !Sub "${NotesTable.Arn}/index/NoteIdIndex"
             - Effect: Allow
               Action:
-                - dynamodb:TransactWriteItems
-              Resource:
-                - !GetAtt NotesTable.Arn
-                - !GetAtt HelpfulVotesTable.Arn
-            - Effect: Allow
-              Action:
                 - dynamodb:UpdateItem
               Resource: !GetAtt NotesTable.Arn
       Events:
