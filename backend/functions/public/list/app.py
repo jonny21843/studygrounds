@@ -62,6 +62,7 @@ def public_projection(note):
         "publishedAt": note.get("publishedAt"),
         "fileCount": len(safe_files),
         "viewCount": int(note.get("viewCount") or 0),
+        "helpfulCount": max(0, int(note.get("helpfulCount") or 0)),
     }
 
 
@@ -154,7 +155,9 @@ def lambda_handler(event, context):
     elif sort == "title":
         notes.sort(key=lambda note: (note.get("title") or "").lower())
     elif sort == "views":
-        notes.sort(key=lambda note: int(note.get("viewCount") or 0), reverse=True)
+        notes.sort(key=lambda note: (int(note.get("viewCount") or 0), note.get("publishedAt") or ""), reverse=True)
+    elif sort == "helpful":
+        notes.sort(key=lambda note: (max(0, int(note.get("helpfulCount") or 0)), note.get("publishedAt") or ""), reverse=True)
     else:
         notes.sort(key=lambda note: note.get("publishedAt", ""), reverse=True)
 

@@ -107,6 +107,26 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  HelpfulVotesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-helpful-votes", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: noteId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: noteId
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
   UserSecurityTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -814,6 +834,62 @@ Resources:
             PayloadFormatVersion: "2.0"
             Auth:
               Authorizer: NONE
+
+  HelpfulVotesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/helpful/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          HELPFUL_VOTES_TABLE: !Ref HelpfulVotesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HelpfulVotesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${NotesTable.Arn}/index/NoteIdIndex"
+            - Effect: Allow
+              Action:
+                - dynamodb:TransactWriteItems
+              Resource:
+                - !GetAtt NotesTable.Arn
+                - !GetAtt HelpfulVotesTable.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt NotesTable.Arn
+      Events:
+        HelpfulStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/helpful
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        MarkHelpful:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/helpful
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+        UnmarkHelpful:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/helpful
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
 
   SavedNotesFunction:
     Type: AWS::Serverless::Function

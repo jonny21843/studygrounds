@@ -83,6 +83,7 @@ def note_projection(note, saved_at):
         "publishedAt": note.get("publishedAt"),
         "fileCount": len(eligible_files(note)),
         "viewCount": int(note.get("viewCount") or 0),
+        "helpfulCount": max(0, int(note.get("helpfulCount") or 0)),
         "savedAt": saved_at,
         "available": True,
     }

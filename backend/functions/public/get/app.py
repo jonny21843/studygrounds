@@ -627,6 +627,7 @@ def lambda_handler(event, context):
                 ).hexdigest(),
                 "publishedAt": note.get("publishedAt"),
                 "viewCount": view_count,
+                "helpfulCount": max(0, int(note.get("helpfulCount") or 0)),
                 "files": files,
             }
         },
