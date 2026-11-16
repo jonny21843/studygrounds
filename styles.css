@@ -2406,3 +2406,45 @@ h3 {
         margin-left: 0;
     }
 }
+
+
+/* Public reporting + admin moderation */
+.report-note-panel {
+    width: min(320px, 100%);
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color, #d8dee9);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.report-note-panel summary {
+    cursor: pointer;
+    font-weight: 700;
+}
+
+.report-note-panel label {
+    display: grid;
+    gap: 0.35rem;
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.report-note-panel select,
+.report-note-panel textarea {
+    width: 100%;
+}
+
+.report-note-panel textarea {
+    resize: vertical;
+}
+
+.moderation-report-item {
+    display: grid;
+    gap: 0.6rem;
+}
+
+.moderation-report-item p {
+    margin: 0;
+}
