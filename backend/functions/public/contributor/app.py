@@ -64,7 +64,7 @@ def lambda_handler(event, context):
         result = table.scan(**scan_args)
         for note in result.get("Items", []):
             owner = note.get("userId")
-            if not owner or contributor_id(owner) != target or not safe_files(note):
+            if not owner or contributor_id(owner) != target or not safe_files(note) or note.get("moderationHold"):
                 continue
             matching.append(note)
         if not result.get("LastEvaluatedKey"):

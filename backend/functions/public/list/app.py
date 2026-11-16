@@ -94,7 +94,10 @@ def lambda_handler(event, context):
 
         scan_args["ExclusiveStartKey"] = last_key
 
-    all_public = [note for note in all_public if safe_public_files(note)]
+    all_public = [
+        note for note in all_public
+        if safe_public_files(note) and not note.get("moderationHold")
+    ]
 
     subjects = sorted(
         {

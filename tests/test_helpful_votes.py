@@ -131,6 +131,7 @@ class ExploreMostHelpfulTests(unittest.TestCase):
                 self.note("newer-popular", 8, "2026-11-02"),
                 self.note("no-votes", 0, "2026-11-03"),
                 self.note("private", 100, "2026-11-04", visibility="private"),
+                dict(self.note("moderation-held", 1000, "2026-11-05"), moderationHold=True),
             ]
         }
 
