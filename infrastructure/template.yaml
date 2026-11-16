@@ -704,6 +704,13 @@ Resources:
             Path: /api/public/notes/{noteId}/report
             Method: POST
             PayloadFormatVersion: "2.0"
+        GetPublicNoteReportStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/report
+            Method: GET
+            PayloadFormatVersion: "2.0"
 
   AdminModerationFunction:
     Type: AWS::Serverless::Function
