@@ -62,7 +62,7 @@ jobs:
             --parameter-overrides \
               EnvironmentName=dev \
               SiteUrl=https://dev.joinstudygrounds.com \
-              'EmailSubjectPrefix=[StudyGrounds DEV]' \
+              "EmailSubjectPrefix=[StudyGrounds DEV]" \
               CognitoUserPoolId=us-east-2_sZ3qWdfwv \
               CognitoAppClientId=3t79knetd0pdav5jsso0osfb1e \
               AdminEmails=jonathan.feagans@outlook.com \
