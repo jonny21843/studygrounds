@@ -2625,53 +2625,147 @@ h3 {
     color: #7a271a;
 }
 
-/* Related public notes: responsive cards using ordinary accessible links. */
+/* Related discovery: compact cards aligned to source content, without full-width stretching. */
 .related-public-section {
-    margin-top: 28px;
-    padding-top: 24px;
+    padding: 24px 28px 30px;
     border-top: 1px solid #e5eaf0;
+    background: #f8faff;
 }
 
-.related-public-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-    gap: 14px;
-    margin-top: 14px;
+.related-public-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    max-width: 930px;
+    margin-bottom: 18px;
 }
 
-.related-public-card {
-    min-width: 0;
-    padding: 16px;
-    border: 1px solid #e5eaf0;
-    border-radius: 12px;
-    background: #fff;
+.related-public-heading .eyebrow {
+    margin: 0 0 5px;
 }
 
-.related-public-card h4 {
-    margin: 12px 0 8px;
-    overflow-wrap: anywhere;
+.related-public-heading h3 {
+    margin: 0;
+    font-size: 1.2rem;
 }
 
-.related-public-card h4 a {
-    color: inherit;
+.related-public-subtitle {
+    margin: 5px 0 0;
+    font-size: 0.85rem;
+    color: #667085;
+}
+
+.related-browse-link {
+    border: 0;
+    padding: 8px 0;
+    background: transparent;
+    color: #3449c5;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+}
+
+.related-browse-link:hover,
+.related-browse-link:focus-visible {
     text-decoration: underline;
     text-underline-offset: 3px;
 }
 
-.related-public-card h4 a:focus-visible {
-    outline: 3px solid #2563eb;
-    outline-offset: 4px;
-    border-radius: 2px;
+.related-public-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 930px;
+    gap: 14px;
 }
 
-.related-public-card p {
-    margin: 0 0 12px;
-    font-size: 0.9rem;
+.related-public-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    padding: 17px 18px;
+    border: 1px solid #dfe5f3;
+    border-radius: 14px;
+    background: #fff;
+    box-shadow: 0 4px 16px rgb(16 24 40 / 4%);
+}
+
+.related-public-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.related-public-topic {
+    font-size: 0.76rem;
+    font-weight: 650;
+    color: #667085;
+    overflow-wrap: anywhere;
+}
+
+.related-public-card h4 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.related-public-card h4 a {
+    color: #18294d;
+    text-decoration: none;
+}
+
+.related-public-card h4 a:hover {
+    color: #3449c5;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.related-public-card h4 a:focus-visible,
+.related-browse-link:focus-visible,
+.public-note-seo-link:focus-visible {
+    outline: 3px solid #3449c5;
+    outline-offset: 4px;
+    border-radius: 3px;
+}
+
+.related-public-description {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    margin: 0;
+    color: #58677e;
+    font-size: 0.87rem;
     line-height: 1.5;
     overflow-wrap: anywhere;
 }
 
 .related-public-author {
-    font-size: 0.82rem;
-    color: #526173;
+    margin-top: auto;
+    padding-top: 4px;
+    color: #667085;
+    font-size: 0.78rem;
+}
+
+@media (max-width: 760px) {
+    .related-public-section {
+        padding: 20px;
+    }
+
+    .related-public-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .related-public-card,
+    .related-browse-link {
+        transition: none;
+    }
 }

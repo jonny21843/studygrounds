@@ -31,3 +31,11 @@ The section stays hidden when no recommendations exist or the supplemental reque
 ## Next candidate work
 
 Launch-readiness QA (auth/session, mobile/a11y, empty/error states), followed by backend-persisted bookmarks. Public contributor profiles require a stable author identifier; display names alone must not be used as user identity.
+
+## Related cards design & discovery follow-up
+
+- [ ] One recommendation uses a compact half-width card at desktop widths, not a stretched full-width card
+- [ ] Two or more recommendations appear as a balanced two-column grid; one column on phones
+- [ ] "Browse [subject]" filters Explore to the same subject
+- [ ] Keyboard focus is visible on Browse and note-title links; long titles and descriptions wrap safely
+- [ ] Related-card navigation works after opening another recommended note

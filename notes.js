@@ -2632,18 +2632,23 @@ async function loadRelatedPublicNotes(note) {
         }
 
         container.innerHTML = `
-            <div class="public-sources-heading">
+            <div class="related-public-heading">
                 <div>
                     <p class="eyebrow">Keep studying</p>
                     <h3>Related notes</h3>
+                    <p class="related-public-subtitle">More from ${escapeHtml(note.subject)}${note.collection ? ` · ${escapeHtml(note.collection)}` : ""}</p>
                 </div>
+                <button type="button" class="related-browse-link" id="browse-related-subject">Browse ${escapeHtml(note.subject)} <span aria-hidden="true">→</span></button>
             </div>
             <div class="related-public-grid">
                 ${candidates.map((candidate) => `
                     <article class="related-public-card">
-                        <span class="subject-chip">${escapeHtml(candidate.subject || "General")}</span>
-                        <h4><a href="${escapeHtml(publicNoteSeoUrl(candidate.noteId, candidate.title))}" data-related-id="${escapeHtml(candidate.noteId)}">${escapeHtml(candidate.title || "Untitled note")}</a></h4>
-                        <p>${escapeHtml(candidate.description || "No description provided.")}</p>
+                        <div class="related-public-meta">
+                            <span class="subject-chip">${escapeHtml(candidate.subject || "General")}</span>
+                            ${candidate.collection ? `<span class="related-public-topic">${escapeHtml(candidate.collection)}</span>` : ""}
+                        </div>
+                        <h4><a href="${escapeHtml(publicNoteSeoUrl(candidate.noteId, candidate.title))}" data-related-id="${escapeHtml(candidate.noteId)}">${escapeHtml(candidate.title || "Untitled note")} <span aria-hidden="true">↗</span></a></h4>
+                        <p class="related-public-description">${escapeHtml(candidate.description || "No description provided.")}</p>
                         <span class="related-public-author">By ${escapeHtml(candidate.publicAuthor || "Community member")}</span>
                     </article>
                 `).join("")}
