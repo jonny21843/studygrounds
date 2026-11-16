@@ -329,31 +329,38 @@ function apiUrl(path) {
 }
 
 async function adminFetch(path, options = {}) {
+    if (!isAuthenticated()) {
+        expireLocalSession();
+        throw new Error("Your session expired. Please sign in again.");
+    }
     const token = sessionStorage.getItem("id_token");
-    if (!token) throw new Error("Please sign in first.");
-
+    if (!token) {
+        expireLocalSession();
+        throw new Error("Your session expired. Please sign in again.");
+    }
     const headers = new Headers(options.headers || {});
     headers.set("Authorization", `Bearer ${token}`);
-
-    return fetch(apiUrl(path), { ...options, headers });
+    const response = await fetch(apiUrl(path), { ...options, headers });
+    if (response.status === 401 && sessionStorage.getItem("id_token") === token) {
+        expireLocalSession();
+        throw new Error("Your session expired. Please sign in again.");
+    }
+    return response;
 }
 
 async function authenticatedFetch(path, options = {}) {
-    const token = getAccessToken();
-    if (!token) throw new Error("Please sign in first.");
-
-    const headers = new Headers(options.headers || {});
-    headers.set("Authorization", `Bearer ${token}`);
-
-    const response = await fetch(apiUrl(path), { ...options, headers });
-
-    if (response.status === 401) {
-        clearTokens();
-        await updateAuthUi();
-        renderSignedInState();
+    if (!isAuthenticated()) {
+        expireLocalSession();
         throw new Error("Your session expired. Please sign in again.");
     }
-
+    const token = getAccessToken();
+    const headers = new Headers(options.headers || {});
+    headers.set("Authorization", `Bearer ${token}`);
+    const response = await fetch(apiUrl(path), { ...options, headers });
+    if (response.status === 401 && getAccessToken() === token) {
+        expireLocalSession();
+        throw new Error("Your session expired. Please sign in again.");
+    }
     return response;
 }
 
@@ -505,6 +512,21 @@ function isConfiguredAdmin() {
     const email = String(claims.email || "").trim().toLowerCase();
     const allowed = (APP_CONFIG.adminEmails || []).map((item) => String(item).trim().toLowerCase());
     return Boolean(email && allowed.includes(email));
+}
+
+function expireLocalSession() {
+    clearTokens();
+    notesState.notes = [];
+    notesState.profile = null;
+    notesState.isAdmin = false;
+    if (notesState.scanRefreshTimer) {
+        window.clearTimeout(notesState.scanRefreshTimer);
+        notesState.scanRefreshTimer = null;
+    }
+    document.getElementById("notes-grid")?.replaceChildren();
+    document.getElementById("create-note-panel").hidden = true;
+    renderSignedInState();
+    updateAuthUi();
 }
 
 function renderSignedInState() {
@@ -2867,9 +2889,12 @@ async function openPublicNote(noteId, updateUrl = true) {
 }
 
 window.addEventListener("focus", () => {
-    if (isAuthenticated() && notesState.activeView === "my-notes") {
-        loadNotes();
+    if (!isAuthenticated()) {
+        if (getAccessToken() || sessionStorage.getItem("id_token")) expireLocalSession();
+        else renderSignedInState();
+        return;
     }
+    if (notesState.activeView === "my-notes") loadNotes();
 });
 
 document.addEventListener("DOMContentLoaded", async () => {

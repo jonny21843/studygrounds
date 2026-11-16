@@ -163,7 +163,7 @@ async function loadCurrentUser() {
     });
 
     if (response.status === 401 || response.status === 403) {
-        clearTokens();
+        if (getAccessToken() === token) clearTokens();
         return null;
     }
 
@@ -202,13 +202,16 @@ async function updateAuthUi() {
         return;
     }
 
+    const verifiedToken = getAccessToken();
     try {
         const user = await loadCurrentUser();
+        if (verifiedToken !== getAccessToken()) return;
 
-        if (!user) {
+        if (!user || !isAuthenticated()) {
             status.textContent = "Not signed in";
             signInButton.hidden = false;
             signOutButton.hidden = true;
+            if (typeof renderSignedInState === "function") renderSignedInState();
         }
     } catch (error) {
         console.error("Unable to verify current user:", error);
@@ -225,4 +228,10 @@ document.addEventListener("DOMContentLoaded", () => {
         ?.addEventListener("click", signOut);
 
     updateAuthUi();
+});
+
+// Update stale sign-in controls when returning to a tab after token expiry.
+window.addEventListener("focus", updateAuthUi);
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) updateAuthUi();
 });
