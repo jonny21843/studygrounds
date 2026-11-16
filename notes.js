@@ -2476,7 +2476,7 @@ async function loadAdminModeration() {
     if (content) content.hidden = true;
 
     try {
-        const response = await authenticatedFetch("/api/admin/moderation");
+        const response = await adminFetch("/api/admin/moderation");
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Unable to load moderation reports.");
 
@@ -2505,7 +2505,7 @@ async function applyModerationAction(reportId, action) {
     if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
 
     try {
-        const response = await authenticatedFetch(
+        const response = await adminFetch(
             `/api/admin/moderation/${encodeURIComponent(reportId)}`,
             {
                 method: "PATCH",
