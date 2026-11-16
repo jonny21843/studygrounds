@@ -44,6 +44,7 @@
         <nav class="app-nav" aria-label="Primary">
             <button id="my-notes-tab" class="nav-button active" type="button" aria-current="page">My Notes</button>
             <button id="explore-tab" class="nav-button" type="button">Explore</button>
+            <button id="saved-notes-tab" class="nav-button" type="button" hidden>Saved Notes</button>
             <button id="settings-tab" class="nav-button" type="button" hidden>Settings</button>
             <button id="analytics-tab" class="nav-button" type="button" hidden>Analytics</button>
             <button id="security-tab" class="nav-button" type="button" hidden>Security</button>
@@ -161,6 +162,21 @@
                 <section id="notes-status" class="status-card" aria-live="polite">Loading your notes...</section>
                 <section id="notes-grid" class="notes-grid" aria-live="polite"></section>
             </section>
+        </section>
+
+        <section id="saved-notes-view" hidden aria-label="Your saved notes">
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Your study library</p>
+                    <h2>Saved Notes</h2>
+                    <p class="subtitle">Keep links to published study material here without copying the files.</p>
+                </div>
+            </div>
+            <section id="saved-notes-status" class="status-card" role="status" aria-live="polite">Loading saved notes...</section>
+            <div id="saved-notes-grid" class="saved-notes-grid"></div>
+            <div class="saved-more-row">
+                <button id="saved-notes-more" type="button" class="button button-secondary" hidden>Load more saved notes</button>
+            </div>
         </section>
 
         <section id="explore-view" hidden>

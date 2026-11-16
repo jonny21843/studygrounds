@@ -2845,3 +2845,42 @@ h3 {
     .contributor-profile-hero { align-items: flex-start; }
     .contributor-taxonomy, .contributor-notes-grid { grid-template-columns: 1fr; }
 }
+
+/* Saved Notes library. Card content is always fetched from currently public notes. */
+.saved-notes-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: 16px;
+    margin-top: 18px;
+}
+.saved-note-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    border: 1px solid #e1e7f1;
+    border-radius: 16px;
+    background: #fff;
+    padding: 20px;
+    box-shadow: 0 6px 20px rgb(16 24 40 / 4%);
+}
+.saved-note-card-top, .saved-note-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.saved-note-date { font-size: 0.78rem; color: #667085; }
+.saved-note-card h3 { margin: 0; overflow-wrap: anywhere; line-height: 1.35; }
+.saved-note-card h3 a { color: #18294d; text-decoration: none; }
+.saved-note-card h3 a:hover { color: #3449c5; text-decoration: underline; }
+.saved-note-card h3 a:focus-visible,
+.saved-note-card button:focus-visible,
+#save-public-note:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }
+.saved-note-description { color: #58677e; font-size: 0.9rem; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+.saved-note-footer { margin-top: auto; padding-top: 14px; border-top: 1px solid #e9edf5; color: #667085; font-size: 0.8rem; }
+.saved-note-unavailable { background: #f9fafb; }
+.saved-note-unavailable h3 { color: #475467; }
+.saved-more-row { display: flex; justify-content: center; padding: 24px 0; }
+.public-save-actions { display: grid; justify-items: end; gap: 6px; }
+#save-public-feedback { max-width: 220px; text-align: right; }
+@media (max-width: 760px) {
+    .saved-notes-grid { grid-template-columns: 1fr; }
+    .public-save-actions { justify-items: start; }
+    #save-public-feedback { text-align: left; }
+}

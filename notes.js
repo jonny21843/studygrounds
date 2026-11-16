@@ -322,7 +322,9 @@ const notesState = {
     isAdmin: false,
     dismissedEmptyCreate: false,
     selectedSecurityUserId: null,
-    notesLoadVersion: 0
+    notesLoadVersion: 0,
+    savedLoadVersion: 0,
+    savedCursor: null
 };
 
 function apiUrl(path) {
@@ -486,17 +488,19 @@ function setActiveView(view) {
     notesState.activeView = view;
     document.getElementById("my-notes-view").hidden = view !== "my-notes";
     document.getElementById("explore-view").hidden = view !== "explore";
+    document.getElementById("saved-notes-view").hidden = view !== "saved-notes";
     document.getElementById("settings-view").hidden = view !== "settings";
     document.getElementById("analytics-view").hidden = view !== "analytics";
     document.getElementById("security-view").hidden = view !== "security";
     document.getElementById("moderation-view").hidden = view !== "moderation";
     document.getElementById("my-notes-tab").classList.toggle("active", view === "my-notes");
     document.getElementById("explore-tab").classList.toggle("active", view === "explore");
+    document.getElementById("saved-notes-tab").classList.toggle("active", view === "saved-notes");
     document.getElementById("settings-tab").classList.toggle("active", view === "settings");
     document.getElementById("analytics-tab").classList.toggle("active", view === "analytics");
     document.getElementById("security-tab").classList.toggle("active", view === "security");
     document.getElementById("moderation-tab").classList.toggle("active", view === "moderation");
-    ["my-notes", "explore", "settings", "analytics", "security", "moderation"].forEach((name) => {
+    ["my-notes", "explore", "saved-notes", "settings", "analytics", "security", "moderation"].forEach((name) => {
         const button = document.getElementById(`${name}-tab`);
         if (name === view) button.setAttribute("aria-current", "page");
         else button.removeAttribute("aria-current");
@@ -504,6 +508,8 @@ function setActiveView(view) {
 
     if (view === "explore") {
         loadPublicNotes();
+    } else if (view === "saved-notes") {
+        loadSavedNotes();
     } else if (view === "analytics") {
         loadAdminAnalytics();
     } else if (view === "security") {
@@ -522,6 +528,9 @@ function isConfiguredAdmin() {
 
 function expireLocalSession() {
     ++notesState.notesLoadVersion;
+    ++notesState.savedLoadVersion;
+    notesState.savedCursor = null;
+    document.getElementById("saved-notes-grid")?.replaceChildren();
     clearTokens();
     notesState.notes = [];
     notesState.profile = null;
@@ -541,6 +550,7 @@ function renderSignedInState() {
     const signedOutPanel = document.getElementById("signed-out-panel");
     const notesApp = document.getElementById("notes-app");
     const myNotesTab = document.getElementById("my-notes-tab");
+    const savedTab = document.getElementById("saved-notes-tab");
     const settingsTab = document.getElementById("settings-tab");
     const analyticsTab = document.getElementById("analytics-tab");
     const securityTab = document.getElementById("security-tab");
@@ -549,12 +559,13 @@ function renderSignedInState() {
     signedOutPanel.hidden = signedIn;
     notesApp.hidden = !signedIn;
     myNotesTab.hidden = !signedIn;
+    savedTab.hidden = !signedIn;
     settingsTab.hidden = !signedIn;
     analyticsTab.hidden = !signedIn || !isConfiguredAdmin();
     securityTab.hidden = !signedIn || !isConfiguredAdmin();
     moderationTab.hidden = !signedIn || !isConfiguredAdmin();
 
-    if (!signedIn && ["my-notes", "settings", "analytics", "security", "moderation"].includes(notesState.activeView)) {
+    if (!signedIn && ["my-notes", "saved-notes", "settings", "analytics", "security", "moderation"].includes(notesState.activeView)) {
         setActiveView("explore");
     }
 }
@@ -2851,6 +2862,147 @@ async function loadRelatedPublicNotes(note) {
     }
 }
 
+// Saved Notes contains references only; note content always comes from the live public API.
+async function loadSavedNotes(append = false) {
+    if (!isAuthenticated()) return;
+    const version = ++notesState.savedLoadVersion;
+    const grid = document.getElementById("saved-notes-grid");
+    const status = document.getElementById("saved-notes-status");
+    const more = document.getElementById("saved-notes-more");
+    const requestToken = getAccessToken();
+    if (!append) {
+        notesState.savedCursor = null;
+        grid.replaceChildren();
+        status.hidden = false;
+        status.textContent = "Loading saved notes...";
+    }
+    more.disabled = true;
+    more.hidden = true;
+    try {
+        const url = new URL(apiUrl("/api/saved-notes"));
+        if (append && notesState.savedCursor) url.searchParams.set("cursor", notesState.savedCursor);
+        const response = await authenticatedFetch(url.pathname + url.search);
+        const data = await response.json();
+        if (version !== notesState.savedLoadVersion || requestToken !== getAccessToken()) return;
+        if (!response.ok) throw new Error(data.error || "Unable to load saved notes.");
+
+        for (const note of (data.notes || [])) {
+            const card = document.createElement("article");
+            card.className = "saved-note-card";
+            if (note.available) {
+                card.innerHTML = `
+                    <div class="saved-note-card-top"><span class="subject-chip">${escapeHtml(note.subject || "General")}</span><span class="saved-note-date">Saved ${escapeHtml(formatDate(note.savedAt))}</span></div>
+                    <h3><a href="${escapeHtml(publicNoteSeoUrl(note.noteId, note.title))}" class="saved-note-open">${escapeHtml(note.title || "Untitled note")}</a></h3>
+                    ${note.collection ? `<p class="public-note-collection">${escapeHtml(note.collection)}</p>` : ""}
+                    <p class="saved-note-description">${escapeHtml(note.description || "No description provided.")}</p>
+                    <div class="saved-note-footer"><span>By ${escapeHtml(note.publicAuthor || "Community member")}</span><button type="button" class="button button-text saved-note-remove">Remove</button></div>
+                `;
+                card.querySelector(".saved-note-open").addEventListener("click", (event) => {
+                    event.preventDefault();
+                    setActiveView("explore");
+                    openPublicNote(note.noteId);
+                });
+            } else {
+                card.classList.add("saved-note-unavailable");
+                card.innerHTML = `
+                    <h3>Saved note unavailable</h3>
+                    <p>This note is no longer public. Its contents are not accessible.</p>
+                    <div class="saved-note-footer"><span>Your bookmark is retained</span><button type="button" class="button button-text saved-note-remove">Remove</button></div>
+                `;
+            }
+            card.querySelector(".saved-note-remove").addEventListener("click", () => removeSavedCard(note.noteId, card));
+            grid.appendChild(card);
+        }
+        notesState.savedCursor = data.nextCursor || null;
+        more.hidden = !notesState.savedCursor;
+        more.disabled = false;
+        status.hidden = true;
+        if (!grid.children.length) {
+            grid.innerHTML = '<div class="empty-state"><h3>Nothing saved yet</h3><p>Explore public notes and choose Save Note to build your study library.</p><button type="button" class="button button-secondary" id="saved-explore">Explore notes</button></div>';
+            grid.querySelector("#saved-explore").addEventListener("click", () => setActiveView("explore"));
+        }
+    } catch (error) {
+        if (version !== notesState.savedLoadVersion || requestToken !== getAccessToken()) return;
+        status.hidden = false;
+        status.textContent = error.message || "Unable to load saved notes.";
+        more.hidden = !notesState.savedCursor;
+        more.disabled = false;
+        if (!grid.children.length) {
+            grid.innerHTML = '<div class="empty-state"><h3>Saved Notes is unavailable</h3><p>Please retry loading your library.</p><button class="button button-secondary" id="saved-retry" type="button">Try again</button></div>';
+            grid.querySelector("#saved-retry").addEventListener("click", () => loadSavedNotes());
+        }
+    }
+}
+
+async function removeSavedCard(noteId, card) {
+    const button = card.querySelector(".saved-note-remove");
+    button.disabled = true;
+    try {
+        const response = await authenticatedFetch(`/api/saved-notes/${encodeURIComponent(noteId)}`, {method: "DELETE"});
+        if (!response.ok) throw new Error("Unable to remove saved note.");
+        card.remove();
+        showAppNotice("Removed from Saved Notes.", "success");
+        // Reload from the first page to avoid skipped records after deletion.
+        if (notesState.activeView === "saved-notes") loadSavedNotes();
+    } catch (error) {
+        button.disabled = false;
+        showAppNotice(error.message || "Unable to remove saved note.", "error");
+    }
+}
+
+async function initializeSaveButton(noteId) {
+    const button = document.getElementById("save-public-note");
+    const feedback = document.getElementById("save-public-feedback");
+    if (!button) return;
+    if (!isAuthenticated()) {
+        button.textContent = "Sign in to save";
+        button.addEventListener("click", signIn);
+        return;
+    }
+    button.disabled = true;
+    button.textContent = "Checking saved status...";
+    let saved = false;
+    try {
+        const response = await authenticatedFetch(`/api/saved-notes/${encodeURIComponent(noteId)}`);
+        const data = await response.json();
+        if (!button.isConnected || button.dataset.noteId !== noteId) return;
+        if (!response.ok) throw new Error(data.error || "Unable to check saved note.");
+        saved = Boolean(data.saved);
+    } catch (error) {
+        if (!button.isConnected) return;
+        button.textContent = "Try saved status again";
+        button.disabled = false;
+        feedback.textContent = "Saved status unavailable. Please retry.";
+        button.addEventListener("click", () => initializeSaveButton(noteId), {once: true});
+        return;
+    }
+    button.disabled = false;
+    const draw = () => {
+        button.textContent = saved ? "✓ Saved — remove" : "☆ Save Note";
+        button.setAttribute("aria-pressed", String(saved));
+        feedback.textContent = saved ? "In your Saved Notes library" : "";
+    };
+    draw();
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+            const response = await authenticatedFetch(`/api/saved-notes/${encodeURIComponent(noteId)}`, {method: saved ? "DELETE" : "PUT"});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Unable to update saved note.");
+            if (!button.isConnected || button.dataset.noteId !== noteId) return;
+            saved = Boolean(data.saved);
+            draw();
+            showAppNotice(saved ? "Added to Saved Notes." : "Removed from Saved Notes.", "success");
+        } catch (error) {
+            if (button.isConnected) {
+                feedback.textContent = error.message || "Unable to save note.";
+            }
+        } finally {
+            if (button.isConnected) button.disabled = false;
+        }
+    });
+}
+
 async function openPublicNote(noteId, updateUrl = true) {
     ++publicBrowseRequestVersion;
     document.getElementById("public-contributor-detail").hidden = true;
@@ -2910,6 +3062,10 @@ async function openPublicNote(noteId, updateUrl = true) {
                         ${note.contributorId ? `<a class="public-contributor-link" id="note-contributor-link" href="${escapeHtml(contributorShareUrl(note.contributorId))}">${escapeHtml(note.publicAuthor || "Community member")}</a>` : `<strong>${escapeHtml(note.publicAuthor || "Community member")}</strong>`}
                         <span>${Number(note.viewCount || 0)} view${Number(note.viewCount || 0) === 1 ? "" : "s"}</span>
                         ${publishedDate ? `<span>Published ${escapeHtml(publishedDate)}</span>` : ""}
+                    </div>
+                    <div class="public-save-actions">
+                        <button id="save-public-note" type="button" class="button button-secondary" data-note-id="${escapeHtml(note.noteId)}">☆ Save Note</button>
+                        <span id="save-public-feedback" class="status-text" role="status" aria-live="polite"></span>
                     </div>
                     <button id="share-public-note" class="button button-secondary" type="button">Copy Share Link</button>
                     ${canReportNote ? `
@@ -2988,6 +3144,7 @@ async function openPublicNote(noteId, updateUrl = true) {
         document.querySelector(".explore-controls")?.setAttribute("hidden", "");
         document.getElementById("public-status").hidden = true;
         detail.hidden = false;
+        initializeSaveButton(note.noteId);
         loadRelatedPublicNotes(note);
         document.getElementById("browse-note-subject")?.addEventListener("click", () => browsePublicTaxonomy(note.subject));
         document.getElementById("browse-note-topic")?.addEventListener("click", () => browsePublicTaxonomy(note.subject, note.collection));
@@ -3022,6 +3179,7 @@ window.addEventListener("focus", () => {
         return;
     }
     if (notesState.activeView === "my-notes") loadNotes();
+    if (notesState.activeView === "saved-notes") loadSavedNotes();
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -3030,6 +3188,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     document.getElementById("hero-sign-in-btn").addEventListener("click", signIn);
     document.getElementById("my-notes-tab").addEventListener("click", () => setActiveView("my-notes"));
+    document.getElementById("saved-notes-tab").addEventListener("click", () => setActiveView("saved-notes"));
+    document.getElementById("saved-notes-more").addEventListener("click", () => {
+        if (notesState.savedCursor) loadSavedNotes(true);
+    });
     document.getElementById("explore-tab").addEventListener("click", () => {
         const url = new URL(window.location.href);
         url.searchParams.delete("note");
@@ -3173,6 +3335,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("analytics-view").hidden = true;
         document.getElementById("security-view").hidden = true;
         document.getElementById("explore-view").hidden = false;
+        document.getElementById("saved-notes-view").hidden = true;
+        document.getElementById("saved-notes-tab").classList.remove("active");
         document.getElementById("my-notes-tab").classList.remove("active");
         document.getElementById("settings-tab").classList.remove("active");
         document.getElementById("analytics-tab").classList.remove("active");
