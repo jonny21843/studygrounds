@@ -10,6 +10,8 @@ from pathlib import Path
 from unittest import TestCase, main
 from unittest.mock import MagicMock, patch
 
+import boto3
+
 APP_PATH = Path(__file__).resolve().parents[1] / "backend/functions/saved/app.py"
 NOTE = "123e4567-e89b-42d3-a456-426614174000"
 SECOND = "123e4567-e89b-42d3-a456-426614174001"
@@ -21,14 +23,14 @@ class ConditionFailed(Exception):
 
 class SavedNotesTests(TestCase):
     def setUp(self):
-        aws = MagicMock()
         self.notes_table = MagicMock()
         self.saved_table = MagicMock()
-        aws.resource.return_value.Table.side_effect = lambda name: (
+        fake_resource = MagicMock()
+        fake_resource.Table.side_effect = lambda name: (
             self.notes_table if name == "notes" else self.saved_table
         )
         with patch.dict(os.environ, {"NOTES_TABLE": "notes", "SAVED_NOTES_TABLE": "saved"}):
-            with patch.dict("sys.modules", {"boto3": aws}):
+            with patch.object(boto3, "resource", return_value=fake_resource):
                 spec = importlib.util.spec_from_file_location("saved_api_test", APP_PATH)
                 self.api = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(self.api)
