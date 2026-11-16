@@ -1,4 +1,5 @@
 import json
+import hashlib
 from decimal import Decimal
 import os
 
@@ -41,6 +42,13 @@ def safe_public_files(note):
     ]
 
 
+def contributor_id(note):
+    owner = note.get("userId")
+    if not isinstance(owner, str) or not owner:
+        return None
+    return hashlib.sha256(("studygrounds:contributor:v1:" + owner).encode("utf-8")).hexdigest()
+
+
 def public_projection(note):
     safe_files = safe_public_files(note)
     return {
@@ -50,6 +58,7 @@ def public_projection(note):
         "collection": note.get("collection", ""),
         "description": note.get("description", ""),
         "publicAuthor": note.get("publicAuthor", "Community member"),
+        "contributorId": contributor_id(note),
         "publishedAt": note.get("publishedAt"),
         "fileCount": len(safe_files),
         "viewCount": int(note.get("viewCount") or 0),

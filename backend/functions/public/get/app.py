@@ -1,4 +1,5 @@
 import json
+import hashlib
 from decimal import Decimal
 from io import BytesIO
 import os
@@ -621,6 +622,9 @@ def lambda_handler(event, context):
                 "collection": note.get("collection", ""),
                 "description": note.get("description", ""),
                 "publicAuthor": note.get("publicAuthor", "Community member"),
+                "contributorId": hashlib.sha256(
+                    ("studygrounds:contributor:v1:" + note["userId"]).encode("utf-8")
+                ).hexdigest(),
                 "publishedAt": note.get("publishedAt"),
                 "viewCount": view_count,
                 "files": files,

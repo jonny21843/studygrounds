@@ -783,6 +783,32 @@ Resources:
             Auth:
               Authorizer: NONE
 
+  PublicContributorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/public/contributor/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+      Events:
+        PublicContributor:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/contributors/{contributorId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            Auth:
+              Authorizer: NONE
+
   PublicNotesFunction:
     Type: AWS::Serverless::Function
     Properties:
