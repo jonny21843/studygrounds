@@ -2409,87 +2409,131 @@ h3 {
 
 
 /* Public reporting + admin moderation */
-.report-note-panel {
-    width: min(300px, 100%);
-    margin-top: 0.65rem;
+.report-note-trigger {
+    margin-top: 0.7rem;
     border: 0;
     background: transparent;
-}
-
-.report-note-panel summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    width: fit-content;
-    cursor: pointer;
-    color: #58627a;
-    font-size: 0.88rem;
+    color: #667085;
+    font: inherit;
+    font-size: 0.84rem;
     font-weight: 700;
-    list-style: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
 }
 
-.report-note-panel summary::-webkit-details-marker {
+.report-note-trigger:hover:not(:disabled),
+.report-note-trigger:focus-visible:not(:disabled) {
+    color: #3440a5;
+}
+
+.report-note-trigger:disabled {
+    cursor: default;
+    color: #98a2b3;
+    text-decoration: none;
+}
+
+.report-note-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+}
+
+.report-note-modal[hidden] {
     display: none;
 }
 
-.report-note-panel summary::before {
-    content: "⚑";
-    font-size: 0.9rem;
+.report-note-backdrop {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(23, 32, 51, 0.42);
+    cursor: default;
 }
 
-.report-note-panel[open] {
-    padding: 0.85rem;
+.report-note-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(460px, 100%);
+    padding: 22px;
     border: 1px solid #dfe5f0;
-    border-radius: 14px;
-    background: #fbfcff;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 24px 70px rgba(16, 24, 40, 0.22);
 }
 
-.report-note-panel[open] summary {
-    margin-bottom: 0.2rem;
-    color: #1d2a44;
+.report-note-dialog-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 18px;
 }
 
-.report-note-panel label {
+.report-note-dialog-heading h3 {
+    margin: 4px 0 6px;
+    color: #172033;
+    font-size: 1.25rem;
+}
+
+.report-note-dialog-heading p:last-child {
+    margin: 0;
+    color: #667085;
+    line-height: 1.5;
+}
+
+.report-note-dialog label {
     display: grid;
-    gap: 0.4rem;
-    margin-top: 0.7rem;
+    gap: 0.45rem;
+    margin-top: 0.9rem;
     color: #27324a;
-    font-size: 0.84rem;
+    font-size: 0.88rem;
     font-weight: 700;
 }
 
-.report-note-panel select,
-.report-note-panel textarea {
+.report-note-dialog label span {
+    color: #98a2b3;
+    font-weight: 500;
+}
+
+.report-note-dialog select,
+.report-note-dialog textarea {
     width: 100%;
-    padding: 0.55rem 0.65rem;
+    padding: 0.65rem 0.75rem;
     border: 1px solid #cfd6e4;
-    border-radius: 9px;
+    border-radius: 10px;
     background: #fff;
     color: #17233b;
     font: inherit;
 }
 
-.report-note-panel textarea {
-    min-height: 82px;
+.report-note-dialog textarea {
+    min-height: 104px;
     resize: vertical;
 }
 
-.report-note-panel .form-actions {
+.report-note-dialog-actions {
+    display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-top: 0.8rem;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid #eef1f5;
 }
 
-.report-note-panel .status-text {
+.report-note-dialog-actions > div {
+    display: flex;
+    gap: 8px;
+}
+
+.report-note-dialog-actions .status-text {
     flex: 1;
     font-size: 0.82rem;
     line-height: 1.35;
-}
-
-.report-note-panel .button {
-    flex: 0 0 auto;
-    min-height: 40px;
-    padding-inline: 0.9rem;
 }
 
 .moderation-report-item {
@@ -2524,18 +2568,22 @@ h3 {
 }
 
 @media (max-width: 720px) {
-    .report-note-panel,
-    .report-note-panel[open] {
-        width: 100%;
+    .report-note-dialog {
+        padding: 18px;
     }
 
-    .report-note-panel .form-actions {
+    .report-note-dialog-heading,
+    .report-note-dialog-actions {
         align-items: stretch;
         flex-direction: column;
     }
 
-    .report-note-panel .button {
+    .report-note-dialog-actions > div {
         width: 100%;
+    }
+
+    .report-note-dialog-actions .button {
+        flex: 1;
     }
 
     .moderation-report-item .security-detail-actions {
