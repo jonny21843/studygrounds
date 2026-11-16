@@ -2596,6 +2596,75 @@ async function applyModerationAction(reportId, action) {
     }
 }
 
+// Recommendations use the existing public listing endpoint, which only exposes safe published notes.
+// This is a lightweight discovery enhancement, not a personalized ranking engine.
+async function loadRelatedPublicNotes(note) {
+    const container = document.getElementById("related-public-notes");
+    if (!container || !note.subject) return;
+
+    const currentNoteId = note.noteId;
+    const currentTopic = (note.collection || "").trim().toLowerCase();
+    const url = new URL(apiUrl("/api/public/notes"));
+    url.searchParams.set("subject", note.subject);
+    url.searchParams.set("pageSize", "48");
+    url.searchParams.set("sort", "newest");
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Could not load related notes");
+        const data = await response.json();
+
+        // Ignore late responses after navigating to another note.
+        if (!container.isConnected || container.dataset.noteId !== currentNoteId) return;
+
+        const candidates = (data.notes || [])
+            .filter((candidate) => candidate.noteId && candidate.noteId !== currentNoteId)
+            .sort((a, b) => {
+                const aMatch = currentTopic && (a.collection || "").trim().toLowerCase() === currentTopic ? 1 : 0;
+                const bMatch = currentTopic && (b.collection || "").trim().toLowerCase() === currentTopic ? 1 : 0;
+                return bMatch - aMatch;
+            })
+            .slice(0, 4);
+
+        if (!candidates.length) {
+            container.hidden = true;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="public-sources-heading">
+                <div>
+                    <p class="eyebrow">Keep studying</p>
+                    <h3>Related notes</h3>
+                </div>
+            </div>
+            <div class="related-public-grid">
+                ${candidates.map((candidate) => `
+                    <article class="related-public-card">
+                        <span class="subject-chip">${escapeHtml(candidate.subject || "General")}</span>
+                        <h4><a href="${escapeHtml(publicNoteSeoUrl(candidate.noteId, candidate.title))}" data-related-id="${escapeHtml(candidate.noteId)}">${escapeHtml(candidate.title || "Untitled note")}</a></h4>
+                        <p>${escapeHtml(candidate.description || "No description provided.")}</p>
+                        <span class="related-public-author">By ${escapeHtml(candidate.publicAuthor || "Community member")}</span>
+                    </article>
+                `).join("")}
+            </div>
+        `;
+        container.hidden = false;
+        container.querySelectorAll("[data-related-id]").forEach((link) => {
+            link.addEventListener("click", (event) => {
+                event.preventDefault();
+                openPublicNote(link.dataset.relatedId);
+            });
+        });
+    } catch (error) {
+        // Discovery is optional: failed requests must not prevent viewing the source note.
+        if (container.isConnected && container.dataset.noteId === currentNoteId) {
+            container.hidden = true;
+        }
+        console.warn("Related notes unavailable:", error);
+    }
+}
+
 async function openPublicNote(noteId, updateUrl = true) {
     const grid = document.getElementById("public-grid");
     const detail = document.getElementById("public-note-detail");
@@ -2723,12 +2792,15 @@ async function openPublicNote(noteId, updateUrl = true) {
                         : '<p class="note-description">No source files are available for this note.</p>'}
                 </div>
             </section>
+
+            <section id="related-public-notes" class="related-public-section" data-note-id="${escapeHtml(note.noteId)}" aria-label="Related study notes" hidden></section>
         `;
 
         grid.hidden = true;
         document.querySelector(".explore-controls")?.setAttribute("hidden", "");
         document.getElementById("public-status").hidden = true;
         detail.hidden = false;
+        loadRelatedPublicNotes(note);
         document.getElementById("share-public-note")?.addEventListener("click", (event) => sharePublicNote(noteId, note.title, event));
         document.getElementById("report-note-trigger")?.addEventListener("click", openReportNoteModal);
         document.getElementById("report-note-submit")?.addEventListener("click", () => submitPublicNoteReport(noteId));
