@@ -166,5 +166,76 @@ class ExploreMostHelpfulTests(unittest.TestCase):
         self.assertEqual(body["notes"][0]["helpfulCount"], 0)
 
 
+class TrendingExploreTests(ExploreMostHelpfulTests):
+    def setUp(self):
+        super().setUp()
+        from datetime import datetime, timezone, timedelta
+        self.now = datetime.now(timezone.utc)
+        self.days_ago = lambda days: (self.now - timedelta(days=days)).isoformat()
+
+    def test_recent_engagement_outranks_older_lifetime_views(self):
+        fresh = dict(self.note("fresh", 2, self.days_ago(1)), viewCount=9)
+        old = dict(self.note("old", 5, self.days_ago(100)), viewCount=2000)
+        self.assertGreater(
+            self.api.trending_score(fresh, self.now),
+            self.api.trending_score(old, self.now),
+        )
+
+    def test_helpful_votes_outweigh_a_few_extra_views(self):
+        helpful = dict(self.note("helpful", 2, self.days_ago(3)), viewCount=5)
+        viewed = dict(self.note("viewed", 0, self.days_ago(3)), viewCount=100)
+        self.assertGreater(
+            self.api.trending_score(helpful, self.now),
+            self.api.trending_score(viewed, self.now),
+        )
+
+    def test_age_decay_and_malformed_dates(self):
+        recent = self.note("recent", 3, self.days_ago(2))
+        old = self.note("old", 3, self.days_ago(60))
+        self.assertGreater(
+            self.api.trending_score(recent, self.now),
+            self.api.trending_score(old, self.now),
+        )
+        self.assertEqual(self.api.trending_score({"publishedAt": "unknown"}, self.now), 0)
+        self.assertEqual(self.api.trending_score({}, self.now), 0)
+        self.assertGreaterEqual(self.api.trending_score(
+            dict(self.note("future", 1, self.days_ago(-1)), viewCount=0), self.now
+        ), 0)
+
+    def test_trending_filters_and_sorts_before_pagination(self):
+        self.table.scan.return_value = {"Items": [
+            dict(self.note("older", 2, self.days_ago(80)), viewCount=100),
+            dict(self.note("fresh", 1, self.days_ago(1)), viewCount=6),
+            dict(self.note("fresh-other-topic", 4, self.days_ago(1)), subject="History", viewCount=6),
+            dict(self.note("private", 100, self.days_ago(0), visibility="private"), viewCount=999),
+            dict(self.note("held", 100, self.days_ago(0)), moderationHold=True, viewCount=999),
+        ]}
+        result = self.api.lambda_handler({
+            "queryStringParameters": {
+                "sort": "trending", "subject": "Technology", "pageSize": "1", "page": "1"
+            }
+        }, None)
+        body = json.loads(result["body"])
+        self.assertEqual(body["total"], 2)
+        self.assertEqual(body["notes"][0]["noteId"], "fresh")
+        result = self.api.lambda_handler({
+            "queryStringParameters": {
+                "sort": "trending", "subject": "Technology", "pageSize": "1", "page": "2"
+            }
+        }, None)
+        self.assertEqual(json.loads(result["body"])["notes"][0]["noteId"], "older")
+
+    def test_trending_uses_stable_tie_breaks(self):
+        self.table.scan.return_value = {"Items": [
+            dict(self.note("a", 1, self.days_ago(2)), viewCount=4),
+            dict(self.note("b", 1, self.days_ago(2)), viewCount=4),
+        ]}
+        result = self.api.lambda_handler(
+            {"queryStringParameters": {"sort": "trending"}}, None
+        )
+        names = [note["noteId"] for note in json.loads(result["body"])["notes"]]
+        self.assertEqual(names, ["b", "a"])
+
+
 if __name__ == "__main__":
     unittest.main()
