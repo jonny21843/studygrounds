@@ -2595,3 +2595,32 @@ h3 {
         width: 100%;
     }
 }
+
+
+/* Owner-facing moderation hold */
+.badge.moderation-held {
+    background: #fff1f0;
+    color: #b42318;
+    border-color: #fecdca;
+}
+
+.moderation-owner-notice {
+    display: grid;
+    gap: 4px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid #fecdca;
+    border-radius: 10px;
+    background: #fff8f7;
+    color: #7a271a;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.moderation-owner-notice strong {
+    color: #b42318;
+}
+
+.moderation-owner-notice span {
+    color: #7a271a;
+}
