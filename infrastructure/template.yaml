@@ -76,6 +76,37 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  SavedNotesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-saved-notes", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: noteId
+          AttributeType: S
+        - AttributeName: savedKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: noteId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: SavedAtIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: savedKey
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
   UserSecurityTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -244,6 +275,7 @@ Resources:
         AllowMethods:
           - GET
           - POST
+          - PUT
           - PATCH
           - DELETE
           - OPTIONS
@@ -782,6 +814,63 @@ Resources:
             PayloadFormatVersion: "2.0"
             Auth:
               Authorizer: NONE
+
+  SavedNotesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/saved/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          SAVED_NOTES_TABLE: !Ref SavedNotesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SavedNotesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${SavedNotesTable.Arn}/index/SavedAtIndex"
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${NotesTable.Arn}/index/NoteIdIndex"
+      Events:
+        ListSavedNotes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        GetSavedNoteStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes/{noteId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        SaveNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes/{noteId}
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+        RemoveSavedNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes/{noteId}
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
 
   PublicContributorFunction:
     Type: AWS::Serverless::Function
