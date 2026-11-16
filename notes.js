@@ -2243,36 +2243,16 @@ async function backToExplore() {
 
 function renderActivePublicFilters(query, subject, collection, sort) {
     const container = document.getElementById("public-active-filters");
-    const items = [];
-
-    if (query) items.push(`Search: ${query}`);
-    if (subject) items.push(`Subject: ${subject}`);
-    if (collection) items.push(`Topic: ${collection}`);
-    if (sort && sort !== "newest") {
-        const labels = {
-            oldest: "Oldest",
-            title: "Title A–Z",
-            views: "Most viewed",
-            helpful: "Most helpful",
-            trending: "Trending"
-        };
-        items.push(`Sort: ${labels[sort] || sort}`);
-    }
-
-    const controls = [
-        ["query", "public-search"],
-        ["subject", "public-subject"],
-        ["collection", "public-collection"],
-        ["sort", "public-sort"]
-    ];
-    const activeValues = [query, subject, collection, sort !== "newest" ? sort : ""];
-    container.innerHTML = items.length
-        ? items.map((item, index) => `<button type="button" class="active-filter-chip active-filter-remove" data-clear-filter="${controls[index]?.[0] || ""}" aria-label="Remove ${escapeHtml(item)} filter">${escapeHtml(item)} <span aria-hidden="true">×</span></button>`).join("")
+    const filters = [
+        {name: "query", label: query ? `Search: ${query}` : ""},
+        {name: "subject", label: subject ? `Subject: ${subject}` : ""},
+        {name: "collection", label: collection ? `Topic: ${collection}` : ""},
+        {name: "sort", label: sort !== "newest" ? `Sort: ${({oldest:"Oldest", title:"Title A–Z", views:"Most viewed", helpful:"Most helpful", trending:"Trending"})[sort] || sort}` : ""}
+    ].filter((filter) => filter.label);
+    container.innerHTML = filters.length
+        ? filters.map((filter) => `<button type="button" class="active-filter-chip active-filter-remove" data-clear-filter="${filter.name}" aria-label="Remove ${escapeHtml(filter.label)} filter">${escapeHtml(filter.label)} <span aria-hidden="true">×</span></button>`).join("")
         : '<span class="active-filter-empty">Showing all subjects and topics</span>';
-    // Items may skip optional fields, so bind by label rather than array index.
-    const activeControls = controls.filter(([name], index) => Boolean(activeValues[index]));
-    container.querySelectorAll("[data-clear-filter]").forEach((button, index) => {
-        button.dataset.clearFilter = activeControls[index][0];
+    container.querySelectorAll("[data-clear-filter]").forEach((button) => {
         button.addEventListener("click", () => {
             const field = button.dataset.clearFilter;
             if (field === "query") document.getElementById("public-search").value = "";
@@ -2398,7 +2378,7 @@ async function loadPublicNotes() {
 
             card.innerHTML = `
                 <div class="public-note-card-top">
-                    <button class="subject-chip public-taxonomy-link explore-subject-chip" data-explore-subject="${escapeHtml(subjectLabel)}" type="button" aria-label="Explore subject ${escapeHtml(subjectLabel)}">${escapeHtml(subjectLabel)}</button>
+                    ${note.subject ? `<button class="subject-chip public-taxonomy-link explore-subject-chip" data-explore-subject="${escapeHtml(subjectLabel)}" type="button" aria-label="Explore subject ${escapeHtml(subjectLabel)}">${escapeHtml(subjectLabel)}</button>` : `<span class="subject-chip">${escapeHtml(subjectLabel)}</span>`}
                     <span class="note-date">${escapeHtml(formatDate(note.publishedAt))}</span>
                 </div>
 
