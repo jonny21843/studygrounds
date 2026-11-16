@@ -25,6 +25,7 @@
     </script>
 </head>
 <body>
+    <a class="skip-to-content" href="#main-content">Skip to main content</a>
     <header class="site-header">
         <div>
             <p class="eyebrow">Study smarter from the notes you already have</p>
@@ -33,15 +34,15 @@
         </div>
 
         <div class="auth-bar">
-            <span id="auth-status">Not signed in</span>
+            <span id="auth-status" aria-live="polite">Not signed in</span>
             <button id="sign-in-btn" class="button button-primary">Sign In</button>
             <button id="sign-out-btn" class="button button-secondary" hidden>Sign Out</button>
         </div>
     </header>
 
-    <main class="app-shell">
+    <main class="app-shell" id="main-content" tabindex="-1">
         <nav class="app-nav" aria-label="Primary">
-            <button id="my-notes-tab" class="nav-button active" type="button">My Notes</button>
+            <button id="my-notes-tab" class="nav-button active" type="button" aria-current="page">My Notes</button>
             <button id="explore-tab" class="nav-button" type="button">Explore</button>
             <button id="settings-tab" class="nav-button" type="button" hidden>Settings</button>
             <button id="analytics-tab" class="nav-button" type="button" hidden>Analytics</button>
@@ -173,7 +174,7 @@
 
             <section class="explore-controls">
                 <div class="explore-search-line">
-                    <input id="public-search" type="search" placeholder="Search titles, subjects, topics, or keywords...">
+                    <input id="public-search" type="search" aria-label="Search public notes" placeholder="Search titles, subjects, topics, or keywords...">
                     <button id="public-search-btn" class="button button-primary" type="button">Search</button>
                 </div>
 

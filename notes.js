@@ -321,7 +321,8 @@ const notesState = {
     uploadFeedback: {},
     isAdmin: false,
     dismissedEmptyCreate: false,
-    selectedSecurityUserId: null
+    selectedSecurityUserId: null,
+    notesLoadVersion: 0
 };
 
 function apiUrl(path) {
@@ -495,6 +496,11 @@ function setActiveView(view) {
     document.getElementById("analytics-tab").classList.toggle("active", view === "analytics");
     document.getElementById("security-tab").classList.toggle("active", view === "security");
     document.getElementById("moderation-tab").classList.toggle("active", view === "moderation");
+    ["my-notes", "explore", "settings", "analytics", "security", "moderation"].forEach((name) => {
+        const button = document.getElementById(`${name}-tab`);
+        if (name === view) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+    });
 
     if (view === "explore") {
         loadPublicNotes();
@@ -515,6 +521,7 @@ function isConfiguredAdmin() {
 }
 
 function expireLocalSession() {
+    ++notesState.notesLoadVersion;
     clearTokens();
     notesState.notes = [];
     notesState.profile = null;
@@ -1398,19 +1405,23 @@ function setNotesStatus(message, isError = false) {
 }
 
 async function loadNotes() {
+    const requestVersion = ++notesState.notesLoadVersion;
     if (!isAuthenticated()) {
         notesState.notes = [];
         renderSignedInState();
         return;
     }
 
+    const requestToken = getAccessToken();
     setNotesStatus("Loading your notes...");
 
     try {
         const response = await authenticatedFetch("/api/notes");
+        if (requestVersion !== notesState.notesLoadVersion || requestToken !== getAccessToken()) return;
         if (!response.ok) throw new Error(await response.text() || `Unable to load notes (${response.status})`);
 
         const data = await response.json();
+        if (requestVersion !== notesState.notesLoadVersion || requestToken !== getAccessToken()) return;
         notesState.notes = data.notes || [];
         personalTaxonomy = {
             subjects: normalizeOptions(data.taxonomy?.subjects || []),
@@ -1440,6 +1451,7 @@ async function loadNotes() {
             }, 4000);
         }
     } catch (error) {
+        if (requestVersion !== notesState.notesLoadVersion || requestToken !== getAccessToken()) return;
         console.error("Unable to load notes:", error);
         setNotesStatus(error.message || "Unable to load your notes.", true);
     }
@@ -3043,6 +3055,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("analytics-tab").classList.remove("active");
         document.getElementById("security-tab").classList.remove("active");
         document.getElementById("explore-tab").classList.add("active");
+        document.getElementById("my-notes-tab").removeAttribute("aria-current");
+        document.getElementById("explore-tab").setAttribute("aria-current", "page");
         await openPublicNote(sharedNoteId, false);
     }
 });
