@@ -35,6 +35,7 @@ class SavedNotesTests(TestCase):
                 self.api = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(self.api)
         self.notes_table.query.return_value = {"Items": [self.note()]}
+        self.notes_table.get_item.return_value = {"Item": self.note()}
         self.saved_table.get_item.return_value = {}
         self.saved_table.query.return_value = {"Items": []}
 
@@ -69,16 +70,20 @@ class SavedNotesTests(TestCase):
             self.note("public", "THREATS_FOUND"),
             self.note("public", hold=True),
         ]:
-            self.notes_table.query.return_value = {"Items": [state]}
+            self.notes_table.get_item.return_value = {"Item": state}
             code, data = self.call("PUT", NOTE)
             self.assertEqual(code, 404)
             self.saved_table.put_item.assert_not_called()
-        self.notes_table.query.return_value = {"Items": [self.note()]}
+        self.notes_table.get_item.return_value = {"Item": self.note()}
         code, data = self.call("PUT", NOTE)
         self.assertEqual((code, data["saved"]), (200, True))
         args = self.saved_table.put_item.call_args.kwargs
         self.assertEqual(args["Item"]["userId"], "alice")
         self.assertEqual(args["Item"]["noteId"], NOTE)
+        self.assertEqual(args["Item"]["noteOwnerId"], "author")
+        self.notes_table.get_item.assert_called_with(
+            Key={"userId": "author", "noteId": NOTE}, ConsistentRead=True
+        )
         self.assertEqual(args["ConditionExpression"], "attribute_not_exists(userId) AND attribute_not_exists(noteId)")
         self.assertNotIn("files", args["Item"])
 
@@ -98,9 +103,9 @@ class SavedNotesTests(TestCase):
 
     def test_removed_note_returns_no_stale_content(self):
         self.saved_table.query.return_value = {
-            "Items": [{"userId": "alice", "noteId": NOTE, "savedAt": "2026-11-16"}]
+            "Items": [{"userId": "alice", "noteId": NOTE, "noteOwnerId": "author", "savedAt": "2026-11-16"}]
         }
-        self.notes_table.query.return_value = {"Items": [self.note("private")]}
+        self.notes_table.get_item.return_value = {"Item": self.note("private")}
         code, data = self.call("GET")
         self.assertEqual(code, 200)
         self.assertEqual(data["notes"][0], {
@@ -108,6 +113,9 @@ class SavedNotesTests(TestCase):
         })
         self.assertNotIn("title", json.dumps(data))
         self.assertNotIn("userId", json.dumps(data))
+        self.notes_table.get_item.assert_called_with(
+            Key={"userId": "author", "noteId": NOTE}, ConsistentRead=True
+        )
 
     def test_cursor_roundtrip_and_cannot_switch_user(self):
         key = {"userId": "alice", "noteId": NOTE, "savedKey": "2026-11-16#" + NOTE}

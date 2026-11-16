@@ -51,13 +51,24 @@ def eligible_note(note):
     )
 
 
-def find_public_note(note_id):
-    result = notes_table.query(
-        IndexName="NoteIdIndex",
-        KeyConditionExpression=Key("noteId").eq(note_id),
-        Limit=1,
+def find_public_note(note_id, note_owner_id=None):
+    # Read the authoritative base-table record consistently, so a recent
+    # moderation removal is not exposed by an eventually consistent GSI.
+    if note_owner_id is None:
+        result = notes_table.query(
+            IndexName="NoteIdIndex",
+            KeyConditionExpression=Key("noteId").eq(note_id),
+            Limit=1,
+        )
+        locator = next(iter(result.get("Items") or []), None)
+        if not locator or not locator.get("userId"):
+            return None
+        note_owner_id = locator["userId"]
+    result = notes_table.get_item(
+        Key={"userId": note_owner_id, "noteId": note_id},
+        ConsistentRead=True,
     )
-    note = next(iter(result.get("Items") or []), None)
+    note = result.get("Item")
     return note if eligible_note(note) else None
 
 
@@ -115,7 +126,7 @@ def list_saved(user_id, params):
     result = saved_table.query(**request)
     notes = []
     for bookmark in result.get("Items") or []:
-        note = find_public_note(bookmark["noteId"])
+        note = find_public_note(bookmark["noteId"], bookmark.get("noteOwnerId"))
         if note:
             notes.append(note_projection(note, bookmark.get("savedAt")))
         else:
@@ -166,7 +177,8 @@ def lambda_handler(event, context):
     if method != "PUT":
         return response(405, {"error": "Method not allowed"})
 
-    if not find_public_note(note_id):
+    note = find_public_note(note_id)
+    if not note:
         return response(404, {"error": "This note is no longer available to save."})
 
     saved_at = datetime.now(timezone.utc).isoformat(timespec="microseconds")
@@ -176,6 +188,7 @@ def lambda_handler(event, context):
                 **key,
                 "savedAt": saved_at,
                 "savedKey": saved_at + "#" + note_id,
+                "noteOwnerId": note["userId"],
             },
             ConditionExpression="attribute_not_exists(userId) AND attribute_not_exists(noteId)",
         )
