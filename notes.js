@@ -1192,6 +1192,7 @@ function renderNotes() {
         const files = note.files || [];
         const fileCount = files.length;
         const published = note.visibility === "public";
+        const moderationHeld = Boolean(note.moderationHold);
         const pendingSecurityScan = files.some((file) => file.malwareScanStatus === "PENDING");
         const failedSecurityScan = files.some((file) => {
             const status = file.malwareScanStatus;
@@ -1199,6 +1200,7 @@ function renderNotes() {
         });
         const queuedForPublish = Boolean(note.publishPending);
         const publishBlocked = !published && failedSecurityScan;
+        const publishDisabled = moderationHeld || publishBlocked || queuedForPublish;
         const securityStatusText = queuedForPublish
             ? "Will publish automatically after scan"
             : pendingSecurityScan
@@ -1234,7 +1236,7 @@ function renderNotes() {
 
         card.innerHTML = `
             <div class="owner-card-header">
-                <span class="badge">${escapeHtml(note.visibility || "private")}</span>
+                <span class="badge ${moderationHeld ? "moderation-held" : ""}">${escapeHtml(moderationHeld ? "Removed by moderation" : (note.visibility || "private"))}</span>
                 <span class="note-date">${escapeHtml(formatDate(createdDate))}</span>
             </div>
 
@@ -1242,6 +1244,12 @@ function renderNotes() {
                 <h3>${escapeHtml(note.title || "Untitled Note")}</h3>
                 <div class="note-meta">${metaHtml}</div>
                 <p class="owner-note-description">${escapeHtml(note.description || "No description yet.")}</p>
+                ${moderationHeld ? `
+                    <div class="moderation-owner-notice">
+                        <strong>Removed by StudyGrounds moderation</strong>
+                        <span>${escapeHtml(note.moderationReason || "This note is not eligible to be published right now.")}</span>
+                    </div>
+                ` : ""}
             </div>
 
             <div class="owner-card-summary">
@@ -1255,11 +1263,12 @@ function renderNotes() {
                     class="button button-secondary"
                     type="button"
                     data-publish-note
-                    ${(publishBlocked || queuedForPublish) ? 'disabled' : ""}
+                    ${publishDisabled ? 'disabled' : ""}
+                    ${moderationHeld ? 'title="This note was removed by moderation and must be restored by an admin before it can be published again."' : ""}
                     ${publishBlocked ? 'title="This source did not pass its security scan."' : ""}
                     ${queuedForPublish ? 'title="This note will publish automatically when the security scan passes."' : ""}
                 >
-                    ${published ? "Unpublish" : queuedForPublish ? "Publishing after scan…" : "Publish"}
+                    ${published ? "Unpublish" : moderationHeld ? "Removed" : queuedForPublish ? "Publishing after scan…" : "Publish"}
                 </button>
                 <button class="button button-text manage-toggle" type="button" data-manage-note aria-expanded="false">
                     Manage ▾
@@ -2469,6 +2478,7 @@ function renderModerationReports(reports) {
     container.innerHTML = reports.map((report) => {
         const status = String(report.status || "OPEN").toUpperCase();
         const isOpen = status === "OPEN";
+        const canRestore = status === "ACTIONED" && String(report.adminAction || "").toLowerCase() === "unpublish";
         return `
             <article class="security-history-item moderation-report-item">
                 <div class="security-history-heading">
@@ -2493,6 +2503,14 @@ function renderModerationReports(reports) {
                         <button class="button security-danger-button moderation-action" type="button"
                             data-report-id="${escapeHtml(report.reportId)}" data-action="unpublish">
                             Unpublish note
+                        </button>
+                    </div>
+                ` : canRestore ? `
+                    <div class="security-detail-actions">
+                        <span class="note-description">This note is currently held from publishing.</span>
+                        <button class="button button-secondary moderation-action" type="button"
+                            data-report-id="${escapeHtml(report.reportId)}" data-action="restore">
+                            Restore note
                         </button>
                     </div>
                 ` : ""}
@@ -2545,7 +2563,11 @@ async function loadAdminModeration() {
 async function applyModerationAction(reportId, action) {
     if (!reportId || !action) return;
 
-    const actionLabel = action === "unpublish" ? "unpublish this note" : "dismiss this report";
+    const actionLabel = action === "unpublish"
+        ? "unpublish this note"
+        : action === "restore"
+            ? "restore this note to the owner as private"
+            : "dismiss this report";
     if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
 
     try {
@@ -2561,7 +2583,11 @@ async function applyModerationAction(reportId, action) {
         if (!response.ok) throw new Error(data.error || "Unable to apply moderation action.");
 
         showAppNotice(
-            action === "unpublish" ? "The reported note was unpublished." : "The report was dismissed.",
+            action === "unpublish"
+                ? "The reported note was unpublished and placed on moderation hold."
+                : action === "restore"
+                    ? "The moderation hold was removed. The note remains private until the owner republishes it."
+                    : "The report was dismissed.",
             "success"
         );
         await loadAdminModeration();
@@ -2722,6 +2748,12 @@ async function openPublicNote(noteId, updateUrl = true) {
         setPublicStatus(error.message || "Unable to open note.", true);
     }
 }
+
+window.addEventListener("focus", () => {
+    if (isAuthenticated() && notesState.activeView === "my-notes") {
+        loadNotes();
+    }
+});
 
 document.addEventListener("DOMContentLoaded", async () => {
     renderSignedInState();
