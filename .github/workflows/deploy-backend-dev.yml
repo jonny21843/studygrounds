@@ -9,6 +9,7 @@ on:
       - "backend/**"
       - "infrastructure/template.yaml"
       - "samconfig.toml"
+      - ".github/workflows/deploy-backend-dev.yml"
 
 permissions:
   contents: read
@@ -33,6 +34,11 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
           aws-region: us-east-2
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
       - name: Set up AWS SAM CLI
         uses: aws-actions/setup-sam@v3
