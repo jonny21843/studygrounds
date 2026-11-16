@@ -2942,8 +2942,12 @@ async function removeSavedCard(noteId, card) {
         if (!response.ok) throw new Error("Unable to remove saved note.");
         card.remove();
         showAppNotice("Removed from Saved Notes.", "success");
-        // Reload from the first page to avoid skipped records after deletion.
-        if (notesState.activeView === "saved-notes") loadSavedNotes();
+        // Avoid immediately reloading an eventually consistent index after deletion.
+        const grid = document.getElementById("saved-notes-grid");
+        if (notesState.activeView === "saved-notes" && !grid.children.length && !notesState.savedCursor) {
+            grid.innerHTML = '<div class="empty-state"><h3>Nothing saved yet</h3><p>Explore public notes and choose Save Note to build your study library.</p><button type="button" class="button button-secondary" id="saved-explore">Explore notes</button></div>';
+            grid.querySelector("#saved-explore").addEventListener("click", () => setActiveView("explore"));
+        }
     } catch (error) {
         button.disabled = false;
         showAppNotice(error.message || "Unable to remove saved note.", "error");
