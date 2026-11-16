@@ -2884,3 +2884,16 @@ h3 {
     .public-save-actions { justify-items: start; }
     #save-public-feedback { text-align: left; }
 }
+
+/* Helpful signals across Explore and public notes */
+.public-note-stats { flex-wrap: wrap; justify-content: flex-end; }
+.helpful-count { color: #394aa3; font-weight: 750; }
+.public-helpful-actions { display: grid; justify-items: end; gap: 5px; }
+#helpful-public-note[aria-pressed="true"] { background: #eef0ff; color: #3440a5; border-color: #aeb8f6; font-weight: 750; }
+#helpful-public-note:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }
+#helpful-public-feedback { max-width: 240px; text-align: right; }
+@media (max-width: 760px) {
+    .public-helpful-actions { justify-items: start; }
+    #helpful-public-feedback { text-align: left; }
+    .public-note-stats { justify-content: flex-start; }
+}

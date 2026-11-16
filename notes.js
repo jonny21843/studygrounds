@@ -2230,7 +2230,8 @@ function renderActivePublicFilters(query, subject, collection, sort) {
         const labels = {
             oldest: "Oldest",
             title: "Title A–Z",
-            views: "Most viewed"
+            views: "Most viewed",
+            helpful: "Most helpful"
         };
         items.push(`Sort: ${labels[sort] || sort}`);
     }
@@ -2335,6 +2336,7 @@ async function loadPublicNotes() {
             const collectionLabel = note.collection || "";
             const fileCount = Number(note.fileCount || 0);
             const viewCount = Number(note.viewCount || 0);
+            const helpfulCount = Number(note.helpfulCount || 0);
 
             const seoUrl = publicNoteSeoUrl(note.noteId, note.title);
 
@@ -2355,6 +2357,7 @@ async function loadPublicNotes() {
                     <div class="public-note-stats">
                         <span>${fileCount} file${fileCount === 1 ? "" : "s"}</span>
                         <span>${viewCount.toLocaleString()} view${viewCount === 1 ? "" : "s"}</span>
+                        <span class="helpful-count" aria-label="${helpfulCount} helpful votes">♡ ${helpfulCount.toLocaleString()}</span>
                     </div>
                 </div>
             `;
@@ -2460,7 +2463,7 @@ async function openPublicContributor(contributorId, updateUrl = true, requestedP
                             <div class="related-public-meta"><span class="subject-chip">${escapeHtml(note.subject || "General")}</span>${note.collection ? `<span class="related-public-topic">${escapeHtml(note.collection)}</span>` : ""}</div>
                             <h4><a href="${escapeHtml(publicNoteSeoUrl(note.noteId, note.title))}" data-profile-note-id="${escapeHtml(note.noteId)}">${escapeHtml(note.title || "Untitled note")}</a></h4>
                             <p class="related-public-description">${escapeHtml(note.description || "No description provided.")}</p>
-                            <span class="related-public-author">${escapeHtml(formatDate(note.publishedAt))}</span>
+                            <span class="related-public-author">${escapeHtml(formatDate(note.publishedAt))} · ♡ ${Number(note.helpfulCount || 0).toLocaleString()} helpful</span>
                         </article>
                     `).join("")}
                 </div>
@@ -2834,7 +2837,7 @@ async function loadRelatedPublicNotes(note) {
                         </div>
                         <h4><a href="${escapeHtml(publicNoteSeoUrl(candidate.noteId, candidate.title))}" data-related-id="${escapeHtml(candidate.noteId)}">${escapeHtml(candidate.title || "Untitled note")} <span aria-hidden="true">↗</span></a></h4>
                         <p class="related-public-description">${escapeHtml(candidate.description || "No description provided.")}</p>
-                        <span class="related-public-author">By ${candidate.contributorId ? `<a class="public-contributor-link" href="${escapeHtml(contributorShareUrl(candidate.contributorId))}" data-related-contributor="${escapeHtml(candidate.contributorId)}">${escapeHtml(candidate.publicAuthor || "Community member")}</a>` : escapeHtml(candidate.publicAuthor || "Community member")}</span>
+                        <span class="related-public-author">♡ ${Number(candidate.helpfulCount || 0).toLocaleString()} helpful · By ${candidate.contributorId ? `<a class="public-contributor-link" href="${escapeHtml(contributorShareUrl(candidate.contributorId))}" data-related-contributor="${escapeHtml(candidate.contributorId)}">${escapeHtml(candidate.publicAuthor || "Community member")}</a>` : escapeHtml(candidate.publicAuthor || "Community member")}</span>
                     </article>
                 `).join("")}
             </div>
@@ -2860,6 +2863,79 @@ async function loadRelatedPublicNotes(note) {
         }
         console.warn("Related notes unavailable:", error);
     }
+}
+
+// Helpful votes are per account; never infer a vote from public counts.
+async function initializeHelpfulButton(note) {
+    const button = document.getElementById("helpful-public-note");
+    const status = document.getElementById("helpful-public-feedback");
+    const count = document.getElementById("public-helpful-count");
+    if (!button || !status || !count) return;
+
+    let voted = false;
+    let currentCount = Math.max(0, Number(note.helpfulCount || 0));
+    const draw = () => {
+        count.textContent = currentCount.toLocaleString() + (currentCount === 1 ? " helpful vote" : " helpful votes");
+        button.textContent = voted ? "♥ Marked helpful" : "♡ Helpful";
+        button.setAttribute("aria-pressed", String(voted));
+    };
+    draw();
+    if (!isAuthenticated()) {
+        button.textContent = "Sign in to vote";
+        button.setAttribute("aria-pressed", "false");
+        button.addEventListener("click", signIn);
+        return;
+    }
+
+    // Owner cannot vote on their own material.
+    const ownNote = notesState.notes.some((item) => item.noteId === note.noteId);
+    if (ownNote) {
+        button.disabled = true;
+        button.textContent = "Your note";
+        status.textContent = "Authors cannot vote on their own notes.";
+        return;
+    }
+    button.disabled = true;
+    status.textContent = "Checking vote...";
+    try {
+        const response = await authenticatedFetch(`/api/public/notes/${encodeURIComponent(note.noteId)}/helpful`);
+        const data = await response.json();
+        if (!button.isConnected || button.dataset.noteId !== note.noteId) return;
+        if (!response.ok) throw new Error(data.error || "Unable to check helpful vote.");
+        voted = Boolean(data.helpful);
+        currentCount = Math.max(0, Number(data.helpfulCount || 0));
+        status.textContent = "";
+    } catch (error) {
+        if (!button.isConnected) return;
+        button.disabled = false;
+        button.textContent = "Retry helpful status";
+        status.textContent = "Couldn't check vote status.";
+        button.addEventListener("click", () => initializeHelpfulButton(note), {once: true});
+        return;
+    }
+    button.disabled = false;
+    draw();
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        status.textContent = "Updating...";
+        try {
+            const response = await authenticatedFetch(
+                `/api/public/notes/${encodeURIComponent(note.noteId)}/helpful`,
+                {method: voted ? "DELETE" : "PUT"}
+            );
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Unable to update helpful vote.");
+            if (!button.isConnected || button.dataset.noteId !== note.noteId) return;
+            voted = Boolean(data.helpful);
+            currentCount = Math.max(0, Number(data.helpfulCount || 0));
+            status.textContent = voted ? "Thanks for your feedback!" : "Vote removed.";
+            draw();
+        } catch (error) {
+            if (button.isConnected) status.textContent = error.message || "Unable to update vote.";
+        } finally {
+            if (button.isConnected) button.disabled = false;
+        }
+    });
 }
 
 // Saved Notes contains references only; note content always comes from the live public API.
@@ -2895,7 +2971,7 @@ async function loadSavedNotes(append = false) {
                     <h3><a href="${escapeHtml(publicNoteSeoUrl(note.noteId, note.title))}" class="saved-note-open">${escapeHtml(note.title || "Untitled note")}</a></h3>
                     ${note.collection ? `<p class="public-note-collection">${escapeHtml(note.collection)}</p>` : ""}
                     <p class="saved-note-description">${escapeHtml(note.description || "No description provided.")}</p>
-                    <div class="saved-note-footer"><span>By ${escapeHtml(note.publicAuthor || "Community member")}</span><button type="button" class="button button-text saved-note-remove">Remove</button></div>
+                    <div class="saved-note-footer"><span>By ${escapeHtml(note.publicAuthor || "Community member")} · ♡ ${Number(note.helpfulCount || 0).toLocaleString()} helpful</span><button type="button" class="button button-text saved-note-remove">Remove</button></div>
                 `;
                 card.querySelector(".saved-note-open").addEventListener("click", (event) => {
                     event.preventDefault();
@@ -3065,7 +3141,12 @@ async function openPublicNote(noteId, updateUrl = true) {
                     <div class="public-note-byline">
                         ${note.contributorId ? `<a class="public-contributor-link" id="note-contributor-link" href="${escapeHtml(contributorShareUrl(note.contributorId))}">${escapeHtml(note.publicAuthor || "Community member")}</a>` : `<strong>${escapeHtml(note.publicAuthor || "Community member")}</strong>`}
                         <span>${Number(note.viewCount || 0)} view${Number(note.viewCount || 0) === 1 ? "" : "s"}</span>
+                        <span id="public-helpful-count">${Number(note.helpfulCount || 0).toLocaleString()} helpful votes</span>
                         ${publishedDate ? `<span>Published ${escapeHtml(publishedDate)}</span>` : ""}
+                    </div>
+                    <div class="public-helpful-actions">
+                        <button id="helpful-public-note" type="button" class="button button-secondary" data-note-id="${escapeHtml(note.noteId)}" aria-pressed="false">♡ Helpful</button>
+                        <span id="helpful-public-feedback" class="status-text" role="status" aria-live="polite"></span>
                     </div>
                     <div class="public-save-actions">
                         <button id="save-public-note" type="button" class="button button-secondary" data-note-id="${escapeHtml(note.noteId)}">☆ Save Note</button>
@@ -3149,6 +3230,7 @@ async function openPublicNote(noteId, updateUrl = true) {
         document.getElementById("public-status").hidden = true;
         detail.hidden = false;
         initializeSaveButton(note.noteId);
+        initializeHelpfulButton(note);
         loadRelatedPublicNotes(note);
         document.getElementById("browse-note-subject")?.addEventListener("click", () => browsePublicTaxonomy(note.subject));
         document.getElementById("browse-note-topic")?.addEventListener("click", () => browsePublicTaxonomy(note.subject, note.collection));
