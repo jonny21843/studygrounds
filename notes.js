@@ -560,6 +560,15 @@ function expireLocalSession() {
 
 function renderSignedInState() {
     const signedIn = isAuthenticated();
+    if (!signedIn) {
+        ++annotationRequestVersion;
+        readerAnnotations = [];
+        readerSelectedExcerpt = null;
+        document.querySelector(".reader-annotations-panel")?.remove();
+        document.querySelectorAll(".reader-private-highlight").forEach(mark => {
+            mark.replaceWith(document.createTextNode(mark.textContent || ""));
+        });
+    }
     const signedOutPanel = document.getElementById("signed-out-panel");
     const notesApp = document.getElementById("notes-app");
     const myNotesTab = document.getElementById("my-notes-tab");
