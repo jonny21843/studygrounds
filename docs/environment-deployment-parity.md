@@ -1,8 +1,8 @@
 # StudyGrounds development / production deployment parity
 
 Both environments use a **single ordered workflow on every push**:
-- DEV `develop` -> `.github/workflows/deploy-dev-frontend.yml`.
-- PROD `main` -> `.github/workflows/deploy-prod-frontend.yml`.
+- DEV `develop` -> `.github/workflows/deploy-dev.yml`.
+- PROD `main` -> `.github/workflows/deploy-prod.yml`.
 
 Each workflow:
 1. Check out the exact release commit and assume that environment's GitHub OIDC role.

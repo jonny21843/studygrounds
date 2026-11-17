@@ -1,6 +1,6 @@
 # StudyGrounds production release process
 
-The single production workflow is `.github/workflows/deploy-prod-frontend.yml` (display name **Deploy StudyGrounds PROD (backend then frontend)**). It runs on **every push to main**, including a develop -> main merge, irrespective of changed file paths.
+The single production workflow is `.github/workflows/deploy-prod.yml` (display name **Deploy StudyGrounds PROD (backend then frontend)**). It runs on **every push to main**, including a develop -> main merge, irrespective of changed file paths.
 
 1. Run backend with GitHub `production` environment OIDC role `StudyGroundsProductionDeploy`; verify AWS account, stack and NotesApi ID.
 2. SAM deploy **existing** `studygrounds-prod` in `us-east-2`, using `StudyGroundsProdCloudFormationExecutionRole`, the existing SAM artifact bucket and explicitly pinned PROD parameters (never samconfig.toml DEV defaults).

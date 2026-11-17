@@ -1,4 +1,4 @@
-# Single ordered release pipeline. A merge into main always updates backend
+# Single ordered release pipeline. A push to main always updates backend
 # first and verifies the public API before publishing frontend assets.
 name: Deploy StudyGrounds PROD (backend then frontend)
 
