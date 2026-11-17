@@ -3342,21 +3342,27 @@ function renderStudyDashboard(data) {
     if (!sessions.length) sessionsContainer.innerHTML = '<p class="status-text">Completed sessions will appear here after you finish studying.</p>';
 }
 
-async function saveStudySource(noteId, fileId) {
+let studyPositionSaveQueue = Promise.resolve();
+function saveStudySource(noteId, fileId) {
     if (!isAuthenticated() || !fileId) return;
-    try {
-        const response = await authenticatedFetch(`/api/study/progress/${encodeURIComponent(noteId)}`, {
-            method: "PUT",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({fileId})
-        });
-        if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || "Unable to remember source.");
+    const accountToken = getAccessToken();
+    // Serialize quick source switches so an older request cannot win the race.
+    studyPositionSaveQueue = studyPositionSaveQueue.catch(() => {}).then(async () => {
+        if (!isAuthenticated() || getAccessToken() !== accountToken) return;
+        try {
+            const response = await authenticatedFetch(`/api/study/progress/${encodeURIComponent(noteId)}`, {
+                method: "PUT",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({fileId})
+            });
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || "Unable to remember source.");
+            }
+        } catch (error) {
+            console.warn("Couldn't save study position:", error);
         }
-    } catch (error) {
-        console.warn("Couldn't save study position:", error);
-    }
+    });
 }
 
 function renderStudySessionControls(noteId) {
@@ -3420,9 +3426,12 @@ async function setupStudySessionForReader(noteId, preferredFileId) {
         renderStudySessionControls(noteId);
         const remembered = (data.continueStudying || []).find(item => item.noteId === noteId && item.available);
         const targetFile = preferredFileId || remembered?.fileId;
-        if (targetFile) {
-            const index = activePublicReader.files.findIndex(file => file.fileId === targetFile);
-            if (index >= 0 && index !== activePublicReader.index) displayPublicSource(index, false, false);
+        const index = targetFile ? activePublicReader.files.findIndex(file => file.fileId === targetFile) : -1;
+        if (index >= 0) {
+            if (index !== activePublicReader.index) displayPublicSource(index, false, false);
+        } else if (activePublicReader.files[0]?.fileId) {
+            // Create an initial resume point only after checking for an existing one.
+            saveStudySource(noteId, activePublicReader.files[0].fileId);
         }
     } catch (error) {
         if (activePublicReader?.noteId !== noteId) return;
