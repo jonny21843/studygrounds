@@ -3105,3 +3105,13 @@ body.public-reader-focus .source-pdf-frame { height: calc(100vh - 190px); min-he
 .ppt-slide-jump select { min-width: 130px; max-width: 100%; padding: 9px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; }
 .ppt-slide-jump select:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }
 .ppt-slide-card { scroll-margin-top: 22px; }
+
+/* Slide selection shows exactly one extracted PowerPoint slide at a time. */
+.ppt-slide-card[hidden] { display: none !important; }
+.ppt-slide-jump { gap: 10px; }
+.ppt-slide-jump .button { flex: 0 1 auto; }
+@media (max-width: 720px) {
+    .ppt-slide-jump { justify-content: center; }
+    .ppt-slide-jump .button { flex: 1 1 125px; }
+    .ppt-slide-jump label { white-space: nowrap; }
+}

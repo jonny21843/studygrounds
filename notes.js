@@ -1063,11 +1063,13 @@ function renderPresentationSlides(preview) {
             <strong>${slides.length} slide${slides.length === 1 ? "" : "s"} previewed</strong>
             ${preview.truncated ? '<span>Preview limited to the first 60 slides.</span>' : ""}
         </div>
-        <div class="ppt-slide-jump">
-            <label for="ppt-slide-select">Jump to slide</label>
-            <select id="ppt-slide-select" aria-label="Jump to slide">
+        <div class="ppt-slide-jump" role="group" aria-label="Presentation slide navigation">
+            <button type="button" class="button button-secondary" data-ppt-previous disabled>← Previous slide</button>
+            <label for="ppt-slide-select">View slide</label>
+            <select id="ppt-slide-select" aria-label="View slide">
                 ${slides.map((slide, index) => `<option value="${index}">Slide ${Number(slide.number || index + 1)}</option>`).join("")}
             </select>
+            <button type="button" class="button button-secondary" data-ppt-next ${slides.length === 1 ? "disabled" : ""}>Next slide →</button>
         </div>
         <div class="ppt-slide-list">
             ${slides.map((slide, index) => {
@@ -1076,7 +1078,7 @@ function renderPresentationSlides(preview) {
                     .join("");
 
                 return `
-                    <article class="ppt-slide-card" data-slide-index="${index}">
+                    <article class="ppt-slide-card" data-slide-index="${index}" ${index === 0 ? "" : "hidden"}>
                         <div class="ppt-slide-number">Slide ${Number(slide.number || 0)}</div>
                         <div class="ppt-slide-content">
                             <h4>${escapeHtml(slide.title || `Slide ${slide.number}`)}</h4>
@@ -1184,10 +1186,20 @@ async function loadNativePowerPointPreviews(noteId) {
 
             if (!container.isConnected) continue;
             container.innerHTML = renderPresentationSlides(data.preview || {});
-            container.querySelector("#ppt-slide-select")?.addEventListener("change", (event) => {
-                const selected = container.querySelectorAll("[data-slide-index]")[Number(event.target.value)];
-                selected?.scrollIntoView({behavior: "auto", block: "start"});
-            });
+            const slideSelect = container.querySelector("#ppt-slide-select");
+            const slideCards = [...container.querySelectorAll("[data-slide-index]")];
+            const previous = container.querySelector("[data-ppt-previous]");
+            const next = container.querySelector("[data-ppt-next]");
+            const showSlide = (index) => {
+                const active = Math.max(0, Math.min(slideCards.length - 1, index));
+                slideCards.forEach((card, position) => { card.hidden = position !== active; });
+                slideSelect.value = String(active);
+                previous.disabled = active === 0;
+                next.disabled = active >= slideCards.length - 1;
+            };
+            slideSelect?.addEventListener("change", () => showSlide(Number(slideSelect.value)));
+            previous?.addEventListener("click", () => showSlide(Number(slideSelect.value) - 1));
+            next?.addEventListener("click", () => showSlide(Number(slideSelect.value) + 1));
         } catch (error) {
             container.innerHTML = `
                 <p class="ppt-preview-error">
