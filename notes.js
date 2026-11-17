@@ -3441,6 +3441,222 @@ async function setupStudySessionForReader(noteId, preferredFileId) {
     }
 }
 
+// Private study notes and highlights. Highlight anchors reference one stable
+// extracted-preview text block; never attempt to annotate browser-owned PDF iframes.
+let readerAnnotations = [];
+let readerSelectedExcerpt = null;
+let annotationRequestVersion = 0;
+
+function readerAnnotationTargets() {
+    const root = document.getElementById("source-active-viewer");
+    if (!root) return [];
+    const targets = root.querySelectorAll(
+        ".document-preview-body > p, .document-preview-body > h1, .document-preview-body > h2, " +
+        ".document-preview-body > h3, .document-preview-body > h4, .document-preview-body > h5, " +
+        ".document-preview-body > h6, .document-preview-table td, .ppt-slide-content h4, .ppt-slide-content li"
+    );
+    return Array.from(targets).map((node, index) => {
+        node.dataset.studyTarget = String(index);
+        return node;
+    });
+}
+
+function applyReaderHighlights() {
+    const reader = activePublicReader;
+    if (!reader) return;
+    const fileId = reader.files[reader.index]?.fileId;
+    const targets = readerAnnotationTargets();
+    for (const target of targets) {
+        // Our extracted-preview targets contain plain text; reconstruct safely
+        // from textContent to avoid stale/nested marks when an item is removed.
+        const source = target.textContent || "";
+        const index = Number(target.dataset.studyTarget);
+        const annotations = readerAnnotations.filter(item => item.kind === "highlight" &&
+            item.fileId === fileId && item.anchor?.target === index &&
+            source.slice(item.anchor.start, item.anchor.end) === item.anchor.quote);
+        annotations.sort((a,b) => a.anchor.start - b.anchor.start || a.anchor.end - b.anchor.end);
+        const fragments = document.createDocumentFragment();
+        let cursor = 0;
+        for (const item of annotations) {
+            const {start,end} = item.anchor;
+            if (start < cursor || end <= start) continue;
+            fragments.append(document.createTextNode(source.slice(cursor, start)));
+            const mark = document.createElement("mark");
+            mark.className = "reader-private-highlight";
+            mark.dataset.color = item.color || "yellow";
+            mark.dataset.highlightId = item.id;
+            mark.textContent = source.slice(start, end);
+            mark.title = "Your private highlight";
+            fragments.append(mark);
+            cursor = end;
+        }
+        fragments.append(document.createTextNode(source.slice(cursor)));
+        target.replaceChildren(fragments);
+    }
+}
+
+function captureReaderSelection() {
+    const reader = activePublicReader;
+    if (!isAuthenticated() || !reader) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const startElement = range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement : range.startContainer;
+    const endElement = range.endContainer.nodeType === Node.TEXT_NODE
+        ? range.endContainer.parentElement : range.endContainer;
+    const startTarget = startElement?.closest?.("[data-study-target]");
+    const endTarget = endElement?.closest?.("[data-study-target]");
+    if (!startTarget || startTarget !== endTarget ||
+        !document.getElementById("source-active-viewer")?.contains(startTarget)) return;
+    const excerpt = range.toString();
+    if (!excerpt.trim() || excerpt.length > 500) return;
+    const before = range.cloneRange();
+    before.selectNodeContents(startTarget);
+    before.setEnd(range.startContainer, range.startOffset);
+    const start = before.toString().length;
+    const end = start + excerpt.length;
+    if (startTarget.textContent.slice(start, end) !== excerpt) return;
+    readerSelectedExcerpt = {
+        noteId: reader.noteId,
+        fileId: reader.files[reader.index]?.fileId,
+        anchor: {target: Number(startTarget.dataset.studyTarget), start, end, quote: excerpt},
+    };
+    const status = document.getElementById("reader-annotation-status");
+    if (status) status.textContent = `Selected ${excerpt.length} characters for highlighting.`;
+}
+
+document.addEventListener("selectionchange", () => {
+    if (document.getElementById("source-active-viewer") && isAuthenticated()) {
+        captureReaderSelection();
+    }
+});
+
+function renderReaderAnnotations() {
+    const reader = activePublicReader;
+    const list = document.getElementById("reader-annotations-list");
+    if (!reader || !list) return;
+    const fileId = reader.files[reader.index]?.fileId;
+    const items = readerAnnotations.filter(item => item.fileId === fileId);
+    list.replaceChildren();
+    if (!items.length) {
+        list.innerHTML = '<p class="status-text">No private notes or highlights on this source yet.</p>';
+    }
+    for (const item of items) {
+        const card = document.createElement("article");
+        card.className = "reader-annotation-card";
+        const label = item.kind === "highlight" ? "Highlight" : "Personal note";
+        card.innerHTML = `<div><strong>${label}</strong>${item.kind === "highlight"
+            ? `<p class="reader-annotation-quote">“${escapeHtml(item.anchor?.quote || "")}”</p>`
+            : `<p>${escapeHtml(item.text)}</p>`}</div>
+            <button type="button" class="button button-text" aria-label="Remove ${label.toLowerCase()}">Remove</button>`;
+        card.querySelector("button").addEventListener("click", async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+                const response = await authenticatedFetch(
+                    `/api/study/annotations/${encodeURIComponent(reader.noteId)}/${encodeURIComponent(item.id)}`,
+                    {method: "DELETE"});
+                if (!response.ok) throw new Error("Unable to remove annotation.");
+                if (activePublicReader?.noteId !== reader.noteId) return;
+                readerAnnotations = readerAnnotations.filter(entry => entry.id !== item.id);
+                readerSelectedExcerpt = null;
+                applyReaderHighlights();
+                renderReaderAnnotations();
+            } catch (error) {
+                button.disabled = false;
+                showAppNotice(error.message, "error");
+            }
+        });
+        list.append(card);
+    }
+    const supported = /\.(docx|pages|pptx)$/i.test(reader.files[reader.index]?.filename || "");
+    const hint = document.getElementById("reader-highlight-hint");
+    const button = document.getElementById("reader-highlight-submit");
+    if (button) button.disabled = !supported;
+    if (hint) hint.textContent = supported
+        ? "Select text within one paragraph, heading or slide item, then choose a color and save the highlight."
+        : "Inline highlighting is available for Word, Pages and PowerPoint previews. Personal notes work on any source.";
+}
+
+async function loadReaderAnnotations(noteId) {
+    if (!isAuthenticated()) return;
+    const version = ++annotationRequestVersion;
+    const token = getAccessToken();
+    const status = document.getElementById("reader-annotation-status");
+    if (status) status.textContent = "Loading private annotations...";
+    try {
+        const response = await authenticatedFetch(`/api/study/annotations/${encodeURIComponent(noteId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to load annotations.");
+        if (version !== annotationRequestVersion || token !== getAccessToken() ||
+            activePublicReader?.noteId !== noteId) return;
+        readerAnnotations = data.annotations || [];
+        if (status) status.textContent = "Only you can see these annotations.";
+        applyReaderHighlights();
+        renderReaderAnnotations();
+    } catch (error) {
+        if (version !== annotationRequestVersion || activePublicReader?.noteId !== noteId) return;
+        if (status) status.textContent = error.message || "Private annotations are unavailable.";
+    }
+}
+
+async function addReaderAnnotation(kind) {
+    const reader = activePublicReader;
+    if (!reader || !isAuthenticated()) return;
+    const noteId = reader.noteId, fileId = reader.files[reader.index]?.fileId;
+    const textInput = document.getElementById("reader-annotation-text");
+    const status = document.getElementById("reader-annotation-status");
+    const text = (textInput?.value || "").trim();
+    if (kind === "note" && !text) {
+        if (status) status.textContent = "Write your note first.";
+        return;
+    }
+    const selected = readerSelectedExcerpt;
+    if (kind === "highlight" && (!selected || selected.noteId !== noteId || selected.fileId !== fileId)) {
+        if (status) status.textContent = "Select text inside this source's extracted preview first.";
+        return;
+    }
+    const button = document.getElementById(kind === "note" ? "reader-annotation-submit" : "reader-highlight-submit");
+    button.disabled = true;
+    try {
+        const payload = {kind, fileId, text: kind === "note" ? text : ""};
+        if (kind === "highlight") {
+            payload.anchor = selected.anchor;
+            payload.color = document.getElementById("reader-highlight-color").value;
+        }
+        const response = await authenticatedFetch(`/api/study/annotations/${encodeURIComponent(noteId)}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to save annotation.");
+        if (activePublicReader?.noteId !== noteId) return;
+        readerAnnotations.unshift(data.annotation);
+        if (kind === "note") textInput.value = "";
+        readerSelectedExcerpt = null;
+        window.getSelection()?.removeAllRanges();
+        applyReaderHighlights();
+        renderReaderAnnotations();
+        if (status) status.textContent = "Saved privately to your account.";
+    } catch (error) {
+        if (status) status.textContent = error.message || "Unable to save annotation.";
+    } finally {
+        if (button?.isConnected) button.disabled = false;
+    }
+}
+
+function setupReaderAnnotations(noteId) {
+    if (!isAuthenticated()) return;
+    readerAnnotations = [];
+    readerSelectedExcerpt = null;
+    document.getElementById("reader-annotation-submit")?.addEventListener("click", () => addReaderAnnotation("note"));
+    document.getElementById("reader-highlight-submit")?.addEventListener("click", () => addReaderAnnotation("highlight"));
+    renderReaderAnnotations();
+    loadReaderAnnotations(noteId);
+}
+
 // Source navigation keeps one viewer mounted at a time to avoid expensive
 // simultaneous document previews on large notes or mobile devices.
 let activePublicReader = null;
@@ -3457,6 +3673,7 @@ async function displayPublicSource(index, focusHeading = false, savePosition = t
         saveStudySource(reader.noteId, reader.files[next].fileId);
     }
     const version = ++sourceRenderVersion;
+    readerSelectedExcerpt = null;
     const container = document.getElementById("source-active-viewer");
     if (!container || container.dataset.readerNote !== reader.noteId) return;
     const file = reader.files[next];
@@ -3483,6 +3700,7 @@ async function displayPublicSource(index, focusHeading = false, savePosition = t
         loadNativeDocumentPreviews(reader.noteId)
     ]);
     if (version !== sourceRenderVersion) return;
+    applyReaderHighlights();
 }
 
 function setupPublicSourceReader(noteId, files) {
@@ -3502,6 +3720,9 @@ function setupPublicSourceReader(noteId, files) {
 async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) {
     ++publicBrowseRequestVersion;
     ++sourceRenderVersion;
+    ++annotationRequestVersion;
+    readerAnnotations = [];
+    readerSelectedExcerpt = null;
     activePublicReader = null;
     exitPublicReaderFocus();
     document.getElementById("public-contributor-detail").hidden = true;
@@ -3661,6 +3882,27 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
                     </div>
                     <div id="source-active-viewer" class="source-viewer-list"></div>
                 ` : '<p class="note-description">No source files are available for this note.</p>'}
+                ${isAuthenticated() && files.length ? `
+                    <section class="reader-annotations-panel" aria-label="Your private study annotations">
+                        <div class="reader-annotations-title">
+                            <div><h3>Your private study notes</h3><p>Visible only to your account. The original uploaded document is unchanged.</p></div>
+                        </div>
+                        <label for="reader-annotation-text">Personal note for this source</label>
+                        <textarea id="reader-annotation-text" maxlength="1000" rows="3" placeholder="Write something to remember..."></textarea>
+                        <button id="reader-annotation-submit" type="button" class="button button-secondary">Save personal note</button>
+                        <div class="reader-highlight-controls">
+                            <label for="reader-highlight-color">Highlight color</label>
+                            <select id="reader-highlight-color">
+                                <option value="yellow">Yellow</option><option value="blue">Blue</option>
+                                <option value="green">Green</option><option value="pink">Pink</option>
+                            </select>
+                            <button id="reader-highlight-submit" type="button" class="button button-secondary">Highlight selected text</button>
+                        </div>
+                        <p id="reader-highlight-hint" class="status-text"></p>
+                        <p id="reader-annotation-status" class="status-text" role="status" aria-live="polite"></p>
+                        <div id="reader-annotations-list" class="reader-annotations-list"></div>
+                    </section>
+                ` : ""}
             </section>
 
             <section id="related-public-notes" class="related-public-section" data-note-id="${escapeHtml(note.noteId)}" aria-label="Related study notes" hidden></section>
@@ -3687,6 +3929,7 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
         document.getElementById("report-note-cancel")?.addEventListener("click", closeReportNoteModal);
         document.querySelector(".report-note-backdrop")?.addEventListener("click", closeReportNoteModal);
         if (files.length) setupPublicSourceReader(noteId, files);
+        if (isAuthenticated() && files.length) setupReaderAnnotations(noteId);
         if (isAuthenticated()) {
             document.getElementById("start-study-session")?.addEventListener("click", () => startStudySession(noteId));
             document.getElementById("finish-study-session")?.addEventListener("click", async (event) => {
