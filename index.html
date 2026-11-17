@@ -25,6 +25,7 @@
     </script>
 </head>
 <body>
+    <a class="skip-to-content" href="#main-content">Skip to main content</a>
     <header class="site-header">
         <div>
             <p class="eyebrow">Study smarter from the notes you already have</p>
@@ -33,19 +34,22 @@
         </div>
 
         <div class="auth-bar">
-            <span id="auth-status">Not signed in</span>
+            <span id="auth-status" aria-live="polite">Not signed in</span>
             <button id="sign-in-btn" class="button button-primary">Sign In</button>
             <button id="sign-out-btn" class="button button-secondary" hidden>Sign Out</button>
         </div>
     </header>
 
-    <main class="app-shell">
+    <main class="app-shell" id="main-content" tabindex="-1">
         <nav class="app-nav" aria-label="Primary">
-            <button id="my-notes-tab" class="nav-button active" type="button">My Notes</button>
+            <button id="my-notes-tab" class="nav-button active" type="button" aria-current="page">My Notes</button>
             <button id="explore-tab" class="nav-button" type="button">Explore</button>
+            <button id="saved-notes-tab" class="nav-button" type="button" hidden>Saved Notes</button>
+            <button id="study-history-tab" class="nav-button" type="button" hidden>Study History</button>
             <button id="settings-tab" class="nav-button" type="button" hidden>Settings</button>
             <button id="analytics-tab" class="nav-button" type="button" hidden>Analytics</button>
             <button id="security-tab" class="nav-button" type="button" hidden>Security</button>
+            <button id="moderation-tab" class="nav-button" type="button" hidden>Moderation</button>
         </nav>
 
         <section id="my-notes-view">
@@ -161,6 +165,43 @@
             </section>
         </section>
 
+        <section id="saved-notes-view" hidden aria-label="Your saved notes">
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Your study library</p>
+                    <h2>Saved Notes</h2>
+                    <p class="subtitle">Keep links to published study material here without copying the files.</p>
+                </div>
+            </div>
+            <section id="saved-notes-status" class="status-card" role="status" aria-live="polite">Loading saved notes...</section>
+            <div id="saved-notes-grid" class="saved-notes-grid"></div>
+            <div class="saved-more-row">
+                <button id="saved-notes-more" type="button" class="button button-secondary" hidden>Load more saved notes</button>
+            </div>
+        </section>
+
+        <section id="study-history-view" hidden aria-label="Your study history">
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Your private study activity</p>
+                    <h2>Study History</h2>
+                    <p class="subtitle">Pick up a saved source or review your completed study sessions. Only your account can access this history.</p>
+                </div>
+                <button id="study-history-refresh" class="button button-secondary" type="button">Refresh</button>
+            </div>
+            <section id="study-history-status" class="status-card" role="status" aria-live="polite">Loading study history...</section>
+            <div id="study-history-content">
+                <section class="study-history-section">
+                    <h3>Continue studying</h3>
+                    <div id="study-continue-list" class="study-history-cards"></div>
+                </section>
+                <section class="study-history-section">
+                    <h3>Recent sessions</h3>
+                    <div id="study-sessions-list" class="study-history-cards"></div>
+                </section>
+            </div>
+        </section>
+
         <section id="explore-view" hidden>
             <div class="dashboard-toolbar">
                 <div>
@@ -172,7 +213,7 @@
 
             <section class="explore-controls">
                 <div class="explore-search-line">
-                    <input id="public-search" type="search" placeholder="Search titles, subjects, topics, or keywords...">
+                    <input id="public-search" type="search" aria-label="Search public notes" placeholder="Search titles, subjects, topics, or keywords...">
                     <button id="public-search-btn" class="button button-primary" type="button">Search</button>
                 </div>
 
@@ -189,6 +230,8 @@
                             <option value="oldest">Oldest</option>
                             <option value="title">Title A–Z</option>
                             <option value="views">Most viewed</option>
+                            <option value="helpful">Most helpful</option>
+                            <option value="trending">Trending</option>
                         </select>
                         <select id="public-page-size" aria-label="Notes per page">
                             <option value="12">12 per page</option>
@@ -204,6 +247,11 @@
                     <div>
                         <strong id="public-result-summary">Loading notes...</strong>
                         <div id="public-active-filters" class="active-filter-list"></div>
+                        <div class="explore-discovery-actions" role="group" aria-label="Quick discovery sorts">
+                            <button id="explore-trending" class="explore-discovery-button" type="button" aria-pressed="false">Trending</button>
+                            <button id="explore-most-helpful" class="explore-discovery-button" type="button" aria-pressed="false">♡ Community favorites</button>
+                        </div>
+                        <p id="explore-ranking-explanation" class="explore-ranking-explanation" hidden></p>
                     </div>
                     <span id="public-page-summary" class="status-text"></span>
                 </div>
@@ -218,6 +266,11 @@
                 <button id="public-next-page" class="button button-secondary" type="button">Next →</button>
                 <button id="public-last-page" class="button button-text" type="button">Last</button>
             </div>
+
+            <section id="public-contributor-detail" class="card contributor-detail" aria-label="Contributor profile" hidden>
+                <button id="close-public-contributor" class="button button-text" type="button">← Back to Explore</button>
+                <div id="public-contributor-content" aria-live="polite"></div>
+            </section>
 
             <section id="public-note-detail" class="card" hidden>
                 <button id="close-public-note" class="button button-text" type="button">← Back to Explore</button>
@@ -326,6 +379,39 @@
                             <div id="security-audit" class="security-history-list"></div>
                         </section>
                     </div>
+                </section>
+            </section>
+        </section>
+
+
+        <section id="moderation-view" hidden>
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Admin</p>
+                    <h2>Moderation</h2>
+                    <p class="subtitle">Review community reports and remove public notes that violate StudyGrounds rules.</p>
+                </div>
+                <button id="refresh-moderation" class="button button-secondary" type="button">Refresh</button>
+            </div>
+
+            <section id="moderation-status" class="status-card" aria-live="polite">Loading reports...</section>
+
+            <section id="moderation-content" hidden>
+                <div class="analytics-grid">
+                    <article class="metric-card"><span>Open reports</span><strong id="moderation-metric-open">0</strong></article>
+                    <article class="metric-card"><span>Actioned</span><strong id="moderation-metric-actioned">0</strong></article>
+                    <article class="metric-card"><span>Dismissed</span><strong id="moderation-metric-dismissed">0</strong></article>
+                    <article class="metric-card"><span>Total reports</span><strong id="moderation-metric-total">0</strong></article>
+                </div>
+
+                <section class="card">
+                    <div class="security-section-heading">
+                        <div>
+                            <h3>Community reports</h3>
+                            <p class="note-description">Each signed-in member can have one active report per public note.</p>
+                        </div>
+                    </div>
+                    <div id="moderation-reports" class="security-history-list"></div>
                 </section>
             </section>
         </section>

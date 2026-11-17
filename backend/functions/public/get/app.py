@@ -1,4 +1,5 @@
 import json
+import hashlib
 from decimal import Decimal
 from io import BytesIO
 import os
@@ -66,7 +67,7 @@ def get_public_note(note_id):
     )
     notes = result.get("Items", [])
     note = notes[0] if notes else None
-    if not note or note.get("visibility") != "public":
+    if not note or note.get("visibility") != "public" or note.get("moderationHold"):
         return None
 
     safe_files = [
@@ -621,8 +622,12 @@ def lambda_handler(event, context):
                 "collection": note.get("collection", ""),
                 "description": note.get("description", ""),
                 "publicAuthor": note.get("publicAuthor", "Community member"),
+                "contributorId": hashlib.sha256(
+                    ("studygrounds:contributor:v1:" + note["userId"]).encode("utf-8")
+                ).hexdigest(),
                 "publishedAt": note.get("publishedAt"),
                 "viewCount": view_count,
+                "helpfulCount": max(0, int(note.get("helpfulCount") or 0)),
                 "files": files,
             }
         },

@@ -1,4 +1,7 @@
 import json
+import hashlib
+import math
+from datetime import datetime, timezone
 from decimal import Decimal
 import os
 
@@ -41,6 +44,13 @@ def safe_public_files(note):
     ]
 
 
+def contributor_id(note):
+    owner = note.get("userId")
+    if not isinstance(owner, str) or not owner:
+        return None
+    return hashlib.sha256(("studygrounds:contributor:v1:" + owner).encode("utf-8")).hexdigest()
+
+
 def public_projection(note):
     safe_files = safe_public_files(note)
     return {
@@ -50,10 +60,37 @@ def public_projection(note):
         "collection": note.get("collection", ""),
         "description": note.get("description", ""),
         "publicAuthor": note.get("publicAuthor", "Community member"),
+        "contributorId": contributor_id(note),
         "publishedAt": note.get("publishedAt"),
         "fileCount": len(safe_files),
         "viewCount": int(note.get("viewCount") or 0),
+        "helpfulCount": max(0, int(note.get("helpfulCount") or 0)),
     }
+
+
+def trending_score(note, now=None):
+    """Recency-weighted discovery signal, not a measure of recent activity.
+
+    Helpful votes carry more weight than lifetime views; a logarithm prevents
+    very high view counts from dominating. Publication age has a 21-day half-life.
+    Future timestamps are treated as new, and missing/bad timestamps rank last.
+    """
+    raw_date = note.get("publishedAt")
+    if not raw_date:
+        return 0.0
+    try:
+        published = datetime.fromisoformat(str(raw_date).replace("Z", "+00:00"))
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+    now = now or datetime.now(timezone.utc)
+    age_days = max(0.0, (now - published).total_seconds() / 86400)
+    helpful = max(0, int(note.get("helpfulCount") or 0))
+    views = max(0, int(note.get("viewCount") or 0))
+    engagement = 1.0 + 5.0 * helpful + 1.5 * math.log1p(views)
+    return engagement * (0.5 ** (age_days / 21.0))
 
 
 def lambda_handler(event, context):
@@ -84,7 +121,10 @@ def lambda_handler(event, context):
 
         scan_args["ExclusiveStartKey"] = last_key
 
-    all_public = [note for note in all_public if safe_public_files(note)]
+    all_public = [
+        note for note in all_public
+        if note.get("visibility") == "public" and safe_public_files(note) and not note.get("moderationHold")
+    ]
 
     subjects = sorted(
         {
@@ -145,7 +185,19 @@ def lambda_handler(event, context):
     elif sort == "title":
         notes.sort(key=lambda note: (note.get("title") or "").lower())
     elif sort == "views":
-        notes.sort(key=lambda note: int(note.get("viewCount") or 0), reverse=True)
+        notes.sort(key=lambda note: (int(note.get("viewCount") or 0), note.get("publishedAt") or ""), reverse=True)
+    elif sort == "helpful":
+        notes.sort(key=lambda note: (max(0, int(note.get("helpfulCount") or 0)), note.get("publishedAt") or "", note.get("noteId") or ""), reverse=True)
+    elif sort == "trending":
+        now = datetime.now(timezone.utc)
+        notes.sort(
+            key=lambda note: (
+                trending_score(note, now),
+                note.get("publishedAt") or "",
+                note.get("noteId") or "",
+            ),
+            reverse=True,
+        )
     else:
         notes.sort(key=lambda note: note.get("publishedAt", ""), reverse=True)
 

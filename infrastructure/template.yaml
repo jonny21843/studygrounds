@@ -76,6 +76,77 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  SavedNotesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-saved-notes", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: noteId
+          AttributeType: S
+        - AttributeName: savedKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: noteId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: SavedAtIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: savedKey
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  HelpfulVotesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-helpful-votes", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: noteId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: noteId
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  StudyActivityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-study-activity", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: recordKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: recordKey
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
   UserSecurityTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -91,6 +162,22 @@ Resources:
           KeyType: HASH
         - AttributeName: sk
           KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  ModerationReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-moderation", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: reportId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: reportId
+          KeyType: HASH
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -187,8 +274,7 @@ Resources:
 
   GuardDutyMalwareProtectionPlan:
     Type: AWS::GuardDuty::MalwareProtectionPlan
-    DependsOn:
-      - GuardDutyMalwareScanRole
+    # Role GetAtt already creates the dependency; explicit DependsOn is redundant.
     Properties:
       Role: !GetAtt GuardDutyMalwareScanRole.Arn
       ProtectedResource:
@@ -228,6 +314,7 @@ Resources:
         AllowMethods:
           - GET
           - POST
+          - PUT
           - PATCH
           - DELETE
           - OPTIONS
@@ -662,6 +749,75 @@ Resources:
               detail-type:
                 - GuardDuty Malware Protection Object Scan Result
 
+  ReportPublicNoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/public/report/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 5
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          REPORTS_TABLE: !Ref ModerationReportsTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ModerationReportsTable
+      Events:
+        ReportPublicNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/report
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        GetPublicNoteReportStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/report
+            Method: GET
+            PayloadFormatVersion: "2.0"
+
+  AdminModerationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/admin/moderation/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          REPORTS_TABLE: !Ref ModerationReportsTable
+          ADMIN_EMAILS: !Ref AdminEmails
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ModerationReportsTable
+      Events:
+        ListModeration:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/moderation
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        UpdateModeration:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/moderation/{reportId}
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
   PublicSeoFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -693,6 +849,221 @@ Resources:
           Properties:
             ApiId: !Ref NotesApi
             Path: /sitemap.xml
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            Auth:
+              Authorizer: NONE
+
+  HelpfulVotesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/helpful/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          HELPFUL_VOTES_TABLE: !Ref HelpfulVotesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HelpfulVotesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${NotesTable.Arn}/index/NoteIdIndex"
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt NotesTable.Arn
+      Events:
+        HelpfulStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/helpful
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        MarkHelpful:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/helpful
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+        UnmarkHelpful:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/notes/{noteId}/helpful
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
+
+  StudyActivityFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/study/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          STUDY_ACTIVITY_TABLE: !Ref StudyActivityTable
+          SAVED_NOTES_TABLE: !Ref SavedNotesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StudyActivityTable
+        # Annotation creation also saves the source note, atomically.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt SavedNotesTable.Arn
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${NotesTable.Arn}/index/NoteIdIndex"
+      Events:
+        StudyDashboard:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        NoteProgress:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/progress/{noteId}
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+        StartStudySession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/sessions
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        FinishStudySession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/sessions/{sessionId}
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
+        ListPrivateAnnotations:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/annotations/{noteId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        AddPrivateAnnotation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/annotations/{noteId}
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        DeletePrivateAnnotation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/annotations/{noteId}/{annotationId}
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
+
+  SavedNotesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/saved/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          SAVED_NOTES_TABLE: !Ref SavedNotesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SavedNotesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${SavedNotesTable.Arn}/index/SavedAtIndex"
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${NotesTable.Arn}/index/NoteIdIndex"
+      Events:
+        ListSavedNotes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        GetSavedNoteStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes/{noteId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        SaveNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes/{noteId}
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+        RemoveSavedNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes/{noteId}
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
+
+  PublicContributorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/public/contributor/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+      Events:
+        PublicContributor:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/public/contributors/{contributorId}
             Method: GET
             PayloadFormatVersion: "2.0"
             Auth:
@@ -777,3 +1148,8 @@ Outputs:
   NotesBucketName:
     Description: Private S3 bucket used for note source files.
     Value: !Ref NotesBucket
+
+  ModerationReportsTableName:
+    Description: DynamoDB table used for public note reports and moderation actions.
+    Value: !Ref ModerationReportsTable
+

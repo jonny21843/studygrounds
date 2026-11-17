@@ -321,7 +321,13 @@ const notesState = {
     uploadFeedback: {},
     isAdmin: false,
     dismissedEmptyCreate: false,
-    selectedSecurityUserId: null
+    selectedSecurityUserId: null,
+    notesLoadVersion: 0,
+    savedLoadVersion: 0,
+    savedCursor: null,
+    studyLoadVersion: 0,
+    studyDashboard: null,
+    studyActiveSession: null
 };
 
 function apiUrl(path) {
@@ -329,31 +335,38 @@ function apiUrl(path) {
 }
 
 async function adminFetch(path, options = {}) {
+    if (!isAuthenticated()) {
+        expireLocalSession();
+        throw new Error("Your session expired. Please sign in again.");
+    }
     const token = sessionStorage.getItem("id_token");
-    if (!token) throw new Error("Please sign in first.");
-
+    if (!token) {
+        expireLocalSession();
+        throw new Error("Your session expired. Please sign in again.");
+    }
     const headers = new Headers(options.headers || {});
     headers.set("Authorization", `Bearer ${token}`);
-
-    return fetch(apiUrl(path), { ...options, headers });
+    const response = await fetch(apiUrl(path), { ...options, headers });
+    if (response.status === 401 && sessionStorage.getItem("id_token") === token) {
+        expireLocalSession();
+        throw new Error("Your session expired. Please sign in again.");
+    }
+    return response;
 }
 
 async function authenticatedFetch(path, options = {}) {
-    const token = getAccessToken();
-    if (!token) throw new Error("Please sign in first.");
-
-    const headers = new Headers(options.headers || {});
-    headers.set("Authorization", `Bearer ${token}`);
-
-    const response = await fetch(apiUrl(path), { ...options, headers });
-
-    if (response.status === 401) {
-        clearTokens();
-        await updateAuthUi();
-        renderSignedInState();
+    if (!isAuthenticated()) {
+        expireLocalSession();
         throw new Error("Your session expired. Please sign in again.");
     }
-
+    const token = getAccessToken();
+    const headers = new Headers(options.headers || {});
+    headers.set("Authorization", `Bearer ${token}`);
+    const response = await fetch(apiUrl(path), { ...options, headers });
+    if (response.status === 401 && getAccessToken() === token) {
+        expireLocalSession();
+        throw new Error("Your session expired. Please sign in again.");
+    }
     return response;
 }
 
@@ -475,24 +488,42 @@ async function saveSettingsProfile(event) {
 }
 
 function setActiveView(view) {
+    if (view !== "explore") exitPublicReaderFocus();
     notesState.activeView = view;
     document.getElementById("my-notes-view").hidden = view !== "my-notes";
     document.getElementById("explore-view").hidden = view !== "explore";
+    document.getElementById("saved-notes-view").hidden = view !== "saved-notes";
+    document.getElementById("study-history-view").hidden = view !== "study-history";
     document.getElementById("settings-view").hidden = view !== "settings";
     document.getElementById("analytics-view").hidden = view !== "analytics";
     document.getElementById("security-view").hidden = view !== "security";
+    document.getElementById("moderation-view").hidden = view !== "moderation";
     document.getElementById("my-notes-tab").classList.toggle("active", view === "my-notes");
     document.getElementById("explore-tab").classList.toggle("active", view === "explore");
+    document.getElementById("saved-notes-tab").classList.toggle("active", view === "saved-notes");
+    document.getElementById("study-history-tab").classList.toggle("active", view === "study-history");
     document.getElementById("settings-tab").classList.toggle("active", view === "settings");
     document.getElementById("analytics-tab").classList.toggle("active", view === "analytics");
     document.getElementById("security-tab").classList.toggle("active", view === "security");
+    document.getElementById("moderation-tab").classList.toggle("active", view === "moderation");
+    ["my-notes", "explore", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].forEach((name) => {
+        const button = document.getElementById(`${name}-tab`);
+        if (name === view) button.setAttribute("aria-current", "page");
+        else button.removeAttribute("aria-current");
+    });
 
     if (view === "explore") {
-        loadPublicNotes();
+        return loadPublicNotes();
+    } else if (view === "saved-notes") {
+        loadSavedNotes();
+    } else if (view === "study-history") {
+        loadStudyDashboard();
     } else if (view === "analytics") {
         loadAdminAnalytics();
     } else if (view === "security") {
         loadAdminSecurity();
+    } else if (view === "moderation") {
+        loadAdminModeration();
     }
 }
 
@@ -503,23 +534,63 @@ function isConfiguredAdmin() {
     return Boolean(email && allowed.includes(email));
 }
 
+function expireLocalSession() {
+    ++notesState.notesLoadVersion;
+    ++notesState.savedLoadVersion;
+    ++notesState.studyLoadVersion;
+    notesState.studyDashboard = null;
+    notesState.studyActiveSession = null;
+    document.getElementById("study-continue-list")?.replaceChildren();
+    document.getElementById("study-sessions-list")?.replaceChildren();
+    notesState.savedCursor = null;
+    document.getElementById("saved-notes-grid")?.replaceChildren();
+    clearTokens();
+    notesState.notes = [];
+    notesState.profile = null;
+    notesState.isAdmin = false;
+    if (notesState.scanRefreshTimer) {
+        window.clearTimeout(notesState.scanRefreshTimer);
+        notesState.scanRefreshTimer = null;
+    }
+    document.getElementById("notes-grid")?.replaceChildren();
+    document.getElementById("create-note-panel").hidden = true;
+    renderSignedInState();
+    updateAuthUi();
+}
+
 function renderSignedInState() {
     const signedIn = isAuthenticated();
+    if (!signedIn) {
+        ++annotationRequestVersion;
+        readerAnnotations = [];
+        readerSelectedExcerpt = null;
+        readerAnnotationsReady = false;
+        document.querySelector(".reader-annotations-panel")?.remove();
+        document.querySelectorAll(".reader-private-highlight").forEach(mark => {
+            mark.replaceWith(document.createTextNode(mark.textContent || ""));
+        });
+    }
     const signedOutPanel = document.getElementById("signed-out-panel");
     const notesApp = document.getElementById("notes-app");
     const myNotesTab = document.getElementById("my-notes-tab");
+    const savedTab = document.getElementById("saved-notes-tab");
+    const studyTab = document.getElementById("study-history-tab");
     const settingsTab = document.getElementById("settings-tab");
     const analyticsTab = document.getElementById("analytics-tab");
     const securityTab = document.getElementById("security-tab");
+    const moderationTab = document.getElementById("moderation-tab");
 
     signedOutPanel.hidden = signedIn;
     notesApp.hidden = !signedIn;
     myNotesTab.hidden = !signedIn;
+    savedTab.hidden = !signedIn;
+    studyTab.hidden = !signedIn;
     settingsTab.hidden = !signedIn;
     analyticsTab.hidden = !signedIn || !isConfiguredAdmin();
     securityTab.hidden = !signedIn || !isConfiguredAdmin();
+    moderationTab.hidden = !signedIn || !isConfiguredAdmin();
 
-    if (!signedIn && ["my-notes", "settings", "analytics", "security"].includes(notesState.activeView)) {
+    if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].includes(notesState.activeView)) {
         setActiveView("explore");
     }
 }
@@ -1016,14 +1087,22 @@ function renderPresentationSlides(preview) {
             <strong>${slides.length} slide${slides.length === 1 ? "" : "s"} previewed</strong>
             ${preview.truncated ? '<span>Preview limited to the first 60 slides.</span>' : ""}
         </div>
+        <div class="ppt-slide-jump" role="group" aria-label="Presentation slide navigation">
+            <button type="button" class="button button-secondary" data-ppt-previous disabled>← Previous slide</button>
+            <label for="ppt-slide-select">View slide</label>
+            <select id="ppt-slide-select" aria-label="View slide">
+                ${slides.map((slide, index) => `<option value="${index}">Slide ${Number(slide.number || index + 1)}</option>`).join("")}
+            </select>
+            <button type="button" class="button button-secondary" data-ppt-next ${slides.length === 1 ? "disabled" : ""}>Next slide →</button>
+        </div>
         <div class="ppt-slide-list">
-            ${slides.map((slide) => {
+            ${slides.map((slide, index) => {
                 const body = (slide.text || [])
                     .map((line) => `<li>${escapeHtml(line)}</li>`)
                     .join("");
 
                 return `
-                    <article class="ppt-slide-card">
+                    <article class="ppt-slide-card" data-slide-index="${index}" ${index === 0 ? "" : "hidden"}>
                         <div class="ppt-slide-number">Slide ${Number(slide.number || 0)}</div>
                         <div class="ppt-slide-content">
                             <h4>${escapeHtml(slide.title || `Slide ${slide.number}`)}</h4>
@@ -1129,7 +1208,22 @@ async function loadNativePowerPointPreviews(noteId) {
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || "Unable to preview presentation.");
 
+            if (!container.isConnected) continue;
             container.innerHTML = renderPresentationSlides(data.preview || {});
+            const slideSelect = container.querySelector("#ppt-slide-select");
+            const slideCards = [...container.querySelectorAll("[data-slide-index]")];
+            const previous = container.querySelector("[data-ppt-previous]");
+            const next = container.querySelector("[data-ppt-next]");
+            const showSlide = (index) => {
+                const active = Math.max(0, Math.min(slideCards.length - 1, index));
+                slideCards.forEach((card, position) => { card.hidden = position !== active; });
+                slideSelect.value = String(active);
+                previous.disabled = active === 0;
+                next.disabled = active >= slideCards.length - 1;
+            };
+            slideSelect?.addEventListener("change", () => showSlide(Number(slideSelect.value)));
+            previous?.addEventListener("click", () => showSlide(Number(slideSelect.value) - 1));
+            next?.addEventListener("click", () => showSlide(Number(slideSelect.value) + 1));
         } catch (error) {
             container.innerHTML = `
                 <p class="ppt-preview-error">
@@ -1186,6 +1280,7 @@ function renderNotes() {
         const files = note.files || [];
         const fileCount = files.length;
         const published = note.visibility === "public";
+        const moderationHeld = Boolean(note.moderationHold);
         const pendingSecurityScan = files.some((file) => file.malwareScanStatus === "PENDING");
         const failedSecurityScan = files.some((file) => {
             const status = file.malwareScanStatus;
@@ -1193,6 +1288,7 @@ function renderNotes() {
         });
         const queuedForPublish = Boolean(note.publishPending);
         const publishBlocked = !published && failedSecurityScan;
+        const publishDisabled = moderationHeld || publishBlocked || queuedForPublish;
         const securityStatusText = queuedForPublish
             ? "Will publish automatically after scan"
             : pendingSecurityScan
@@ -1228,7 +1324,7 @@ function renderNotes() {
 
         card.innerHTML = `
             <div class="owner-card-header">
-                <span class="badge">${escapeHtml(note.visibility || "private")}</span>
+                <span class="badge ${moderationHeld ? "moderation-held" : ""}">${escapeHtml(moderationHeld ? "Removed by moderation" : (note.visibility || "private"))}</span>
                 <span class="note-date">${escapeHtml(formatDate(createdDate))}</span>
             </div>
 
@@ -1236,6 +1332,12 @@ function renderNotes() {
                 <h3>${escapeHtml(note.title || "Untitled Note")}</h3>
                 <div class="note-meta">${metaHtml}</div>
                 <p class="owner-note-description">${escapeHtml(note.description || "No description yet.")}</p>
+                ${moderationHeld ? `
+                    <div class="moderation-owner-notice">
+                        <strong>Removed by StudyGrounds moderation</strong>
+                        <span>${escapeHtml(note.moderationReason || "This note is not eligible to be published right now.")}</span>
+                    </div>
+                ` : ""}
             </div>
 
             <div class="owner-card-summary">
@@ -1249,11 +1351,12 @@ function renderNotes() {
                     class="button button-secondary"
                     type="button"
                     data-publish-note
-                    ${(publishBlocked || queuedForPublish) ? 'disabled' : ""}
+                    ${publishDisabled ? 'disabled' : ""}
+                    ${moderationHeld ? 'title="This note was removed by moderation and must be restored by an admin before it can be published again."' : ""}
                     ${publishBlocked ? 'title="This source did not pass its security scan."' : ""}
                     ${queuedForPublish ? 'title="This note will publish automatically when the security scan passes."' : ""}
                 >
-                    ${published ? "Unpublish" : queuedForPublish ? "Publishing after scan…" : "Publish"}
+                    ${published ? "Unpublish" : moderationHeld ? "Removed" : queuedForPublish ? "Publishing after scan…" : "Publish"}
                 </button>
                 <button class="button button-text manage-toggle" type="button" data-manage-note aria-expanded="false">
                     Manage ▾
@@ -1360,20 +1463,34 @@ function setNotesStatus(message, isError = false) {
     status.style.color = isError ? "#b42318" : "";
 }
 
+function clearCompletedScanUploadFeedback(notes) {
+    for (const note of notes || []) {
+        const feedback = notesState.uploadFeedback[note.noteId];
+        if (!feedback || !/^(Uploaded|Replaced)\. Security scan in progress/.test(feedback.message || "")) continue;
+        const pending = Boolean(note.publishPending) ||
+            (note.files || []).some((file) => (file.malwareScanStatus || "").toUpperCase() === "PENDING");
+        if (!pending) delete notesState.uploadFeedback[note.noteId];
+    }
+}
+
 async function loadNotes() {
+    const requestVersion = ++notesState.notesLoadVersion;
     if (!isAuthenticated()) {
         notesState.notes = [];
         renderSignedInState();
         return;
     }
 
+    const requestToken = getAccessToken();
     setNotesStatus("Loading your notes...");
 
     try {
         const response = await authenticatedFetch("/api/notes");
+        if (requestVersion !== notesState.notesLoadVersion || requestToken !== getAccessToken()) return;
         if (!response.ok) throw new Error(await response.text() || `Unable to load notes (${response.status})`);
 
         const data = await response.json();
+        if (requestVersion !== notesState.notesLoadVersion || requestToken !== getAccessToken()) return;
         notesState.notes = data.notes || [];
         personalTaxonomy = {
             subjects: normalizeOptions(data.taxonomy?.subjects || []),
@@ -1384,6 +1501,7 @@ async function loadNotes() {
             renderSearchSelectOptions(container, false);
         });
         notifyScanStateChanges(notesState.notes);
+        clearCompletedScanUploadFeedback(notesState.notes);
         renderNotes();
 
         if (notesState.scanRefreshTimer) {
@@ -1403,6 +1521,7 @@ async function loadNotes() {
             }, 4000);
         }
     } catch (error) {
+        if (requestVersion !== notesState.notesLoadVersion || requestToken !== getAccessToken()) return;
         console.error("Unable to load notes:", error);
         setNotesStatus(error.message || "Unable to load your notes.", true);
     }
@@ -2159,36 +2278,78 @@ function refreshExploreTopicFilter() {
     topicSelect.value = normalizedTopics.includes(currentTopic) ? currentTopic : "";
 }
 
+let exploreReturnScrollY = null;
+
+function rememberExplorePosition() {
+    const grid = document.getElementById("public-grid");
+    if (notesState.activeView === "explore" && grid && !grid.hidden) {
+        exploreReturnScrollY = window.scrollY;
+    }
+}
+
+async function backToExplore() {
+    exitPublicReaderFocus();
+    activePublicReader = null;
+    ++sourceRenderVersion;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("note");
+    url.searchParams.delete("contributor");
+    window.history.replaceState({}, "", url);
+    const restoreY = exploreReturnScrollY;
+    exploreReturnScrollY = null;
+    await loadPublicNotes();
+    if (typeof restoreY === "number" && notesState.activeView === "explore") {
+        window.requestAnimationFrame(() => window.scrollTo({top: restoreY, behavior: "instant"}));
+    }
+}
+
 function renderActivePublicFilters(query, subject, collection, sort) {
     const container = document.getElementById("public-active-filters");
-    const items = [];
-
-    if (query) items.push(`Search: ${query}`);
-    if (subject) items.push(`Subject: ${subject}`);
-    if (collection) items.push(`Topic: ${collection}`);
-    if (sort && sort !== "newest") {
-        const labels = {
-            oldest: "Oldest",
-            title: "Title A–Z",
-            views: "Most viewed"
-        };
-        items.push(`Sort: ${labels[sort] || sort}`);
-    }
-
-    container.innerHTML = items.length
-        ? items.map((item) => `<span class="active-filter-chip">${escapeHtml(item)}</span>`).join("")
-        : '<span class="active-filter-empty">No filters applied</span>';
+    const filters = [
+        {name: "query", label: query ? `Search: ${query}` : ""},
+        {name: "subject", label: subject ? `Subject: ${subject}` : ""},
+        {name: "collection", label: collection ? `Topic: ${collection}` : ""},
+        {name: "sort", label: sort !== "newest" ? `Sort: ${({oldest:"Oldest", title:"Title A–Z", views:"Most viewed", helpful:"Most helpful", trending:"Trending"})[sort] || sort}` : ""}
+    ].filter((filter) => filter.label);
+    container.innerHTML = filters.length
+        ? filters.map((filter) => `<button type="button" class="active-filter-chip active-filter-remove" data-clear-filter="${filter.name}" aria-label="Remove ${escapeHtml(filter.label)} filter">${escapeHtml(filter.label)} <span aria-hidden="true">×</span></button>`).join("")
+        : '<span class="active-filter-empty">Showing all subjects and topics</span>';
+    container.querySelectorAll("[data-clear-filter]").forEach((button) => {
+        button.addEventListener("click", () => {
+            const field = button.dataset.clearFilter;
+            if (field === "query") document.getElementById("public-search").value = "";
+            if (field === "subject") {
+                document.getElementById("public-subject").value = "";
+                refreshExploreTopicFilter();
+            }
+            if (field === "collection") document.getElementById("public-collection").value = "";
+            if (field === "sort") document.getElementById("public-sort").value = "newest";
+            notesState.publicPage = 1;
+            loadPublicNotes();
+        });
+    });
 }
 
 async function loadPublicNotes() {
+    document.getElementById("public-contributor-detail").hidden = true;
     const grid = document.getElementById("public-grid");
     const detail = document.getElementById("public-note-detail");
     const query = document.getElementById("public-search").value.trim();
     const subject = document.getElementById("public-subject").value;
     const collection = document.getElementById("public-collection").value;
     const sort = document.getElementById("public-sort").value;
+    document.getElementById("explore-most-helpful").setAttribute("aria-pressed", String(sort === "helpful"));
+    document.getElementById("explore-trending").setAttribute("aria-pressed", String(sort === "trending"));
+    const explanation = document.getElementById("explore-ranking-explanation");
+    const descriptions = {
+        trending: "Trending balances helpful votes, lifetime views, and publication recency. It does not track recent clicks or votes.",
+        helpful: "Community favorites are ranked by helpful votes, with newer notes breaking ties."
+    };
+    explanation.textContent = descriptions[sort] || "";
+    explanation.hidden = !descriptions[sort];
     const pageSize = Number(document.getElementById("public-page-size").value || notesState.publicPageSize || 18);
     notesState.publicPageSize = pageSize;
+    const requestVersion = ++publicBrowseRequestVersion;
 
     detail.hidden = true;
     document.querySelector(".explore-controls")?.removeAttribute("hidden");
@@ -2207,6 +2368,7 @@ async function loadPublicNotes() {
 
         const response = await fetch(url);
         const data = await response.json();
+        if (requestVersion !== publicBrowseRequestVersion) return;
         if (!response.ok) throw new Error(data.error || "Unable to load public notes.");
 
         const notes = data.notes || [];
@@ -2253,69 +2415,93 @@ async function loadPublicNotes() {
         document.getElementById("public-status").hidden = true;
 
         if (!notes.length) {
+            const hasFilters = Boolean(query || subject || collection);
             grid.innerHTML = `
                 <div class="empty-state">
-                    <h3>No public notes found</h3>
-                    <p>Try a different keyword or check back as the community library grows.</p>
+                    <h3>${hasFilters ? "No notes match these filters" : "No public notes yet"}</h3>
+                    <p>${hasFilters ? "Try another subject, topic, or keyword." : "Published study materials will appear here as the library grows."}</p>
+                    ${hasFilters ? '<button type="button" id="public-empty-reset" class="button button-secondary">Clear filters</button>' : ""}
                 </div>
             `;
+            grid.querySelector("#public-empty-reset")?.addEventListener("click", () => document.getElementById("public-search-clear").click());
             return;
         }
 
         notes.forEach((note) => {
             const card = document.createElement("article");
             card.className = "public-note-card";
-            card.tabIndex = 0;
-            card.setAttribute("role", "button");
-            card.setAttribute("aria-label", `Open ${note.title || "public note"}`);
-
             const subjectLabel = note.subject || "General";
             const collectionLabel = note.collection || "";
             const fileCount = Number(note.fileCount || 0);
             const viewCount = Number(note.viewCount || 0);
+            const helpfulCount = Number(note.helpfulCount || 0);
 
             const seoUrl = publicNoteSeoUrl(note.noteId, note.title);
 
             card.innerHTML = `
                 <div class="public-note-card-top">
-                    <span class="subject-chip">${escapeHtml(subjectLabel)}</span>
+                    ${note.subject ? `<button class="subject-chip public-taxonomy-link explore-subject-chip" data-explore-subject="${escapeHtml(subjectLabel)}" type="button" aria-label="Explore subject ${escapeHtml(subjectLabel)}">${escapeHtml(subjectLabel)}</button>` : `<span class="subject-chip">${escapeHtml(subjectLabel)}</span>`}
                     <span class="note-date">${escapeHtml(formatDate(note.publishedAt))}</span>
                 </div>
 
                 <div class="public-note-card-body">
                     <h3><a class="public-note-seo-link" href="${escapeHtml(seoUrl)}">${escapeHtml(note.title || "Untitled note")}</a></h3>
-                    ${collectionLabel ? `<p class="public-note-collection">${escapeHtml(collectionLabel)}</p>` : ""}
+                    ${collectionLabel ? `<button type="button" class="public-note-collection explore-topic-link" data-explore-topic="${escapeHtml(collectionLabel)}" aria-label="Explore topic ${escapeHtml(collectionLabel)}">${escapeHtml(collectionLabel)}</button>` : ""}
                     <p class="public-note-description">${escapeHtml(note.description || "No description provided.")}</p>
                 </div>
 
                 <div class="public-note-card-footer">
-                    <span>By ${escapeHtml(note.publicAuthor || "Community member")}</span>
+                    <span>By ${note.contributorId ? `<a class="public-contributor-link" href="${escapeHtml(contributorShareUrl(note.contributorId))}" data-contributor-id="${escapeHtml(note.contributorId)}">${escapeHtml(note.publicAuthor || "Community member")}</a>` : escapeHtml(note.publicAuthor || "Community member")}</span>
                     <div class="public-note-stats">
                         <span>${fileCount} file${fileCount === 1 ? "" : "s"}</span>
                         <span>${viewCount.toLocaleString()} view${viewCount === 1 ? "" : "s"}</span>
+                        <span class="helpful-count" aria-label="${helpfulCount} helpful votes">♡ ${helpfulCount.toLocaleString()}</span>
                     </div>
                 </div>
             `;
 
-            const openCard = () => openPublicNote(note.noteId);
+            const openCard = () => {
+                rememberExplorePosition();
+                openPublicNote(note.noteId);
+            };
             card.querySelector(".public-note-seo-link")?.addEventListener("click", (event) => {
                 event.preventDefault();
                 event.stopPropagation();
                 openCard();
             });
-            card.addEventListener("click", openCard);
-            card.addEventListener("keydown", (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    openCard();
-                }
+            card.querySelector("[data-explore-subject]")?.addEventListener("click", (event) => {
+                event.stopPropagation();
+                browsePublicTaxonomy(note.subject);
+            });
+            card.querySelector("[data-explore-topic]")?.addEventListener("click", (event) => {
+                event.stopPropagation();
+                browsePublicTaxonomy(note.subject, note.collection);
+            });
+            card.querySelector("[data-contributor-id]")?.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                rememberExplorePosition();
+                openPublicContributor(note.contributorId);
+            });
+            card.addEventListener("click", (event) => {
+                if (!event.target.closest("a, button")) openCard();
             });
 
             grid.appendChild(card);
         });
     } catch (error) {
+        if (requestVersion !== publicBrowseRequestVersion) return;
         console.error("Unable to load public notes:", error);
-        setPublicStatus(error.message || "Unable to load public notes.", true);
+        document.getElementById("public-pagination").hidden = true;
+        setPublicStatus("Unable to load public notes. Please try again.", true);
+        grid.innerHTML = `
+            <div class="empty-state">
+                <h3>Explore is temporarily unavailable</h3>
+                <p>Check your connection and try loading the public notes again.</p>
+                <button class="button button-secondary" id="public-retry" type="button">Try again</button>
+            </div>
+        `;
+        grid.querySelector("#public-retry")?.addEventListener("click", loadPublicNotes);
     }
 }
 
@@ -2325,6 +2511,107 @@ function publicNoteSlug(title) {
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 80) || "study-note";
+}
+
+function contributorShareUrl(contributorId) {
+    const url = new URL(window.location.origin + "/");
+    url.searchParams.set("contributor", contributorId);
+    return url.toString();
+}
+
+async function openPublicContributor(contributorId, updateUrl = true, requestedPage = 1) {
+    if (!/^[0-9a-f]{64}$/.test(String(contributorId || ""))) return;
+    exitPublicReaderFocus();
+    activePublicReader = null;
+    ++sourceRenderVersion;
+    const version = ++publicBrowseRequestVersion;
+    const panel = document.getElementById("public-contributor-detail");
+    const content = document.getElementById("public-contributor-content");
+    const noteDetail = document.getElementById("public-note-detail");
+    const grid = document.getElementById("public-grid");
+
+    noteDetail.hidden = true;
+    document.querySelector(".explore-controls")?.setAttribute("hidden", "");
+    document.getElementById("public-pagination").hidden = true;
+    document.getElementById("public-status").hidden = true;
+    grid.hidden = true;
+    panel.hidden = false;
+    content.innerHTML = '<div class="status-card" role="status">Loading contributor profile...</div>';
+
+    try {
+        const url = new URL(apiUrl(`/api/public/contributors/${encodeURIComponent(contributorId)}`));
+        url.searchParams.set("page", String(requestedPage));
+        const response = await fetch(url);
+        const data = await response.json();
+        if (version !== publicBrowseRequestVersion) return;
+        if (!response.ok) throw new Error(data.error || "Unable to load contributor.");
+
+        const contributor = data.contributor;
+        const noteList = data.notes || [];
+        content.innerHTML = `
+            <header class="contributor-profile-hero">
+                <div class="contributor-avatar" aria-hidden="true">${escapeHtml((contributor.displayName || "C").slice(0, 1).toUpperCase())}</div>
+                <div class="contributor-profile-main">
+                    <p class="eyebrow">Community contributor</p>
+                    <h2>${escapeHtml(contributor.displayName || "Community member")}</h2>
+                    <p>${Number(contributor.contributionCount || 0).toLocaleString()} published ${Number(contributor.contributionCount || 0) === 1 ? "note" : "notes"}</p>
+                </div>
+                <button type="button" class="button button-secondary" id="share-contributor-profile">Copy Profile Link</button>
+            </header>
+            <section class="contributor-taxonomy" aria-label="Contributor subjects and topics">
+                <div>
+                    <h3>Subjects</h3>
+                    <div class="contributor-chips">${(contributor.subjects || []).length ? contributor.subjects.map((item) => `<button type="button" class="subject-chip public-taxonomy-link" data-profile-subject="${escapeHtml(item)}">${escapeHtml(item)}</button>`).join("") : '<span class="status-text">No subjects yet</span>'}</div>
+                </div>
+                <div>
+                    <h3>Topics</h3>
+                    <div class="contributor-chips">${(contributor.topics || []).length ? contributor.topics.map((item) => `<span class="related-public-topic">${escapeHtml(item)}</span>`).join("") : '<span class="status-text">No topics yet</span>'}</div>
+                </div>
+            </section>
+            <section class="contributor-notes-section">
+                <h3>Published notes</h3>
+                <div class="contributor-notes-grid">
+                    ${noteList.map((note) => `
+                        <article class="related-public-card">
+                            <div class="related-public-meta"><span class="subject-chip">${escapeHtml(note.subject || "General")}</span>${note.collection ? `<span class="related-public-topic">${escapeHtml(note.collection)}</span>` : ""}</div>
+                            <h4><a href="${escapeHtml(publicNoteSeoUrl(note.noteId, note.title))}" data-profile-note-id="${escapeHtml(note.noteId)}">${escapeHtml(note.title || "Untitled note")}</a></h4>
+                            <p class="related-public-description">${escapeHtml(note.description || "No description provided.")}</p>
+                            <span class="related-public-author">${escapeHtml(formatDate(note.publishedAt))} · ♡ ${Number(note.helpfulCount || 0).toLocaleString()} helpful</span>
+                        </article>
+                    `).join("")}
+                </div>
+                ${data.totalPages > 1 ? `<nav class="contributor-pagination" aria-label="Contributor notes pages"><button type="button" class="button button-secondary" id="contributor-prev" ${data.page <= 1 ? "disabled" : ""}>Previous</button><span>Page ${data.page} of ${data.totalPages}</span><button type="button" class="button button-secondary" id="contributor-next" ${data.page >= data.totalPages ? "disabled" : ""}>Next</button></nav>` : ""}
+            </section>
+        `;
+        if (updateUrl) {
+            const share = new URL(contributorShareUrl(contributorId));
+            window.history.replaceState({}, "", share);
+        }
+        content.querySelector("#share-contributor-profile")?.addEventListener("click", async (event) => {
+            const share = contributorShareUrl(contributorId);
+            try {
+                await navigator.clipboard.writeText(share);
+                showCopyToast(event);
+            } catch (error) {
+                window.prompt("Copy profile link:", share);
+            }
+        });
+        content.querySelectorAll("[data-profile-note-id]").forEach((link) => {
+            link.addEventListener("click", (event) => {
+                event.preventDefault();
+                openPublicNote(link.dataset.profileNoteId);
+            });
+        });
+        content.querySelectorAll("[data-profile-subject]").forEach((button) => {
+            button.addEventListener("click", () => browsePublicTaxonomy(button.dataset.profileSubject));
+        });
+        content.querySelector("#contributor-prev")?.addEventListener("click", () => openPublicContributor(contributorId, false, data.page - 1));
+        content.querySelector("#contributor-next")?.addEventListener("click", () => openPublicContributor(contributorId, false, data.page + 1));
+    } catch (error) {
+        if (version !== publicBrowseRequestVersion) return;
+        content.innerHTML = `<div class="empty-state"><h3>Contributor unavailable</h3><p>${escapeHtml(error.message || "Unable to load this contributor.")}</p><button type="button" class="button button-secondary" id="retry-contributor-profile">Try again</button></div>`;
+        content.querySelector("#retry-contributor-profile")?.addEventListener("click", () => openPublicContributor(contributorId, updateUrl, requestedPage));
+    }
 }
 
 function publicNoteSeoUrl(noteId, title) {
@@ -2345,7 +2632,1166 @@ async function sharePublicNote(noteId, title, event = null) {
     }
 }
 
-async function openPublicNote(noteId, updateUrl = true) {
+
+async function getPublicNoteReportStatus(noteId) {
+    try {
+        const response = await authenticatedFetch(
+            `/api/public/notes/${encodeURIComponent(noteId)}/report`
+        );
+        const data = await response.json();
+        if (!response.ok) return {reported: false, report: null};
+        return {
+            reported: Boolean(data.reported),
+            report: data.report || null
+        };
+    } catch {
+        return {reported: false, report: null};
+    }
+}
+
+function closeReportNoteModal() {
+    const modal = document.getElementById("report-note-modal");
+    if (modal) modal.hidden = true;
+}
+
+function openReportNoteModal() {
+    const modal = document.getElementById("report-note-modal");
+    if (modal) {
+        modal.hidden = false;
+        document.getElementById("report-note-reason")?.focus();
+    }
+}
+
+async function submitPublicNoteReport(noteId) {
+    const reasonElement = document.getElementById("report-note-reason");
+    const detailsElement = document.getElementById("report-note-details");
+    const statusElement = document.getElementById("report-note-status");
+    const submitButton = document.getElementById("report-note-submit");
+
+    const reason = reasonElement?.value || "";
+    const details = detailsElement?.value?.trim() || "";
+
+    if (!reason) {
+        if (statusElement) {
+            statusElement.textContent = "Choose a reason before submitting.";
+            statusElement.className = "status-text error";
+        }
+        return;
+    }
+
+    if (submitButton) submitButton.disabled = true;
+    if (statusElement) {
+        statusElement.textContent = "Submitting report...";
+        statusElement.className = "status-text";
+    }
+
+    try {
+        const response = await authenticatedFetch(
+            `/api/public/notes/${encodeURIComponent(noteId)}/report`,
+            {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({reason, details})
+            }
+        );
+        const data = await response.json();
+        if (!response.ok) {
+            if (response.status === 409 && data.reported) {
+                const trigger = document.getElementById("report-note-trigger");
+                if (trigger) {
+                    trigger.textContent = "Already reported";
+                    trigger.disabled = true;
+                }
+                closeReportNoteModal();
+                showAppNotice("You already reported this note.", "info");
+                return;
+            }
+            throw new Error(data.error || "Unable to submit report.");
+        }
+
+        const trigger = document.getElementById("report-note-trigger");
+        if (trigger) {
+            trigger.textContent = "Already reported";
+            trigger.disabled = true;
+        }
+        if (detailsElement) detailsElement.value = "";
+        closeReportNoteModal();
+        showAppNotice(data.message || "Report submitted.", "success", 5200);
+    } catch (error) {
+        if (statusElement) {
+            statusElement.textContent = error.message || "Unable to submit report.";
+            statusElement.className = "status-text error";
+        }
+    } finally {
+        if (submitButton) submitButton.disabled = false;
+    }
+}
+
+function moderationReasonLabel(reason) {
+    const labels = {
+        spam: "Spam",
+        inappropriate: "Inappropriate content",
+        copyright: "Copyright concern",
+        misleading: "Misleading or inaccurate",
+        other: "Other"
+    };
+    return labels[String(reason || "").toLowerCase()] || reason || "Unspecified";
+}
+
+function renderModerationReports(reports) {
+    const container = document.getElementById("moderation-reports");
+    if (!container) return;
+
+    if (!reports.length) {
+        container.innerHTML = '<div class="empty-state"><h3>No reports yet</h3><p>Community reports will appear here for review.</p></div>';
+        return;
+    }
+
+    container.innerHTML = reports.map((report) => {
+        const status = String(report.status || "OPEN").toUpperCase();
+        const isOpen = status === "OPEN";
+        const canRestore = status === "ACTIONED" && String(report.adminAction || "").toLowerCase() === "unpublish";
+        return `
+            <article class="security-history-item moderation-report-item">
+                <div class="security-history-heading">
+                    <div>
+                        <strong>${escapeHtml(report.noteTitle || "Untitled note")}</strong>
+                        <span class="status-pill">${escapeHtml(status)}</span>
+                    </div>
+                    <span>${escapeHtml(formatDate(report.createdAt))}</span>
+                </div>
+                <p><strong>Reason:</strong> ${escapeHtml(moderationReasonLabel(report.reason))}</p>
+                ${report.details ? `<p>${escapeHtml(report.details)}</p>` : ""}
+                <p class="note-description">
+                    Reporter: ${escapeHtml(report.reporterEmail || "Signed-in member")}
+                    ${report.reviewedBy ? ` · Reviewed by ${escapeHtml(report.reviewedBy)}` : ""}
+                </p>
+                ${isOpen ? `
+                    <div class="security-detail-actions">
+                        <button class="button button-secondary moderation-action" type="button"
+                            data-report-id="${escapeHtml(report.reportId)}" data-action="dismiss">
+                            Dismiss
+                        </button>
+                        <button class="button security-danger-button moderation-action" type="button"
+                            data-report-id="${escapeHtml(report.reportId)}" data-action="unpublish">
+                            Unpublish note
+                        </button>
+                    </div>
+                ` : canRestore ? `
+                    <div class="security-detail-actions">
+                        <span class="note-description">This note is currently held from publishing.</span>
+                        <button class="button button-secondary moderation-action" type="button"
+                            data-report-id="${escapeHtml(report.reportId)}" data-action="restore">
+                            Restore note
+                        </button>
+                    </div>
+                ` : ""}
+            </article>
+        `;
+    }).join("");
+
+    container.querySelectorAll(".moderation-action").forEach((button) => {
+        button.addEventListener("click", () => {
+            applyModerationAction(button.dataset.reportId, button.dataset.action);
+        });
+    });
+}
+
+async function loadAdminModeration() {
+    if (!isConfiguredAdmin()) return;
+
+    const status = document.getElementById("moderation-status");
+    const content = document.getElementById("moderation-content");
+    if (status) {
+        status.hidden = false;
+        status.textContent = "Loading reports...";
+        status.className = "status-card";
+    }
+    if (content) content.hidden = true;
+
+    try {
+        const response = await adminFetch("/api/admin/moderation");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to load moderation reports.");
+
+        const metrics = data.metrics || {};
+        document.getElementById("moderation-metric-open").textContent = Number(metrics.open || 0).toLocaleString();
+        document.getElementById("moderation-metric-actioned").textContent = Number(metrics.actioned || 0).toLocaleString();
+        document.getElementById("moderation-metric-dismissed").textContent = Number(metrics.dismissed || 0).toLocaleString();
+        document.getElementById("moderation-metric-total").textContent = Number(metrics.total || 0).toLocaleString();
+        renderModerationReports(data.reports || []);
+
+        if (status) status.hidden = true;
+        if (content) content.hidden = false;
+    } catch (error) {
+        if (status) {
+            status.hidden = false;
+            status.textContent = error.message || "Unable to load moderation reports.";
+            status.className = "status-card error";
+        }
+    }
+}
+
+async function applyModerationAction(reportId, action) {
+    if (!reportId || !action) return;
+
+    const actionLabel = action === "unpublish"
+        ? "unpublish this note"
+        : action === "restore"
+            ? "restore this note to the owner as private"
+            : "dismiss this report";
+    if (!window.confirm(`Are you sure you want to ${actionLabel}?`)) return;
+
+    try {
+        const response = await adminFetch(
+            `/api/admin/moderation/${encodeURIComponent(reportId)}`,
+            {
+                method: "PATCH",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({action})
+            }
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to apply moderation action.");
+
+        showAppNotice(
+            action === "unpublish"
+                ? "The reported note was unpublished and placed on moderation hold."
+                : action === "restore"
+                    ? "The moderation hold was removed. The note remains private until the owner republishes it."
+                    : "The report was dismissed.",
+            "success"
+        );
+        await loadAdminModeration();
+    } catch (error) {
+        showAppNotice(error.message || "Unable to apply moderation action.", "error", 6500);
+    }
+}
+
+let publicBrowseRequestVersion = 0;
+
+// Navigate from a note into the existing subject/topic filters without extra endpoints.
+function browsePublicTaxonomy(subject, topic = "") {
+    exitPublicReaderFocus();
+    activePublicReader = null;
+    ++sourceRenderVersion;
+    const subjectSelect = document.getElementById("public-subject");
+    const topicSelect = document.getElementById("public-collection");
+    if (!subjectSelect || !topicSelect) return;
+
+    const selectedSubject = String(subject || "").trim();
+    const selectedTopic = String(topic || "").trim();
+    const ensureOption = (select, value) => {
+        if (value && !Array.from(select.options).some((option) => option.value === value)) {
+            select.add(new Option(value, value));
+        }
+        select.value = value;
+    };
+
+    document.getElementById("public-search").value = "";
+    ensureOption(subjectSelect, selectedSubject);
+    refreshExploreTopicFilter();
+    ensureOption(topicSelect, selectedTopic);
+    notesState.publicPage = 1;
+
+    exploreReturnScrollY = null;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("note");
+    url.searchParams.delete("contributor");
+    window.history.replaceState({}, "", url);
+    setActiveView("explore");
+}
+
+// Recommendations use the existing public listing endpoint, which only exposes safe published notes.
+// This is a lightweight discovery enhancement, not a personalized ranking engine.
+async function loadRelatedPublicNotes(note) {
+    const container = document.getElementById("related-public-notes");
+    if (!container || !note.subject) return;
+
+    const currentNoteId = note.noteId;
+    const currentTopic = (note.collection || "").trim().toLowerCase();
+    const url = new URL(apiUrl("/api/public/notes"));
+    url.searchParams.set("subject", note.subject);
+    url.searchParams.set("pageSize", "48");
+    url.searchParams.set("sort", "newest");
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Could not load related notes");
+        const data = await response.json();
+
+        // Ignore late responses after navigating to another note.
+        if (!container.isConnected || container.dataset.noteId !== currentNoteId) return;
+
+        const candidates = (data.notes || [])
+            .filter((candidate) => candidate.noteId && candidate.noteId !== currentNoteId)
+            .sort((a, b) => {
+                const aMatch = currentTopic && (a.collection || "").trim().toLowerCase() === currentTopic ? 1 : 0;
+                const bMatch = currentTopic && (b.collection || "").trim().toLowerCase() === currentTopic ? 1 : 0;
+                return bMatch - aMatch;
+            })
+            .slice(0, 4);
+
+        if (!candidates.length) {
+            container.hidden = true;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="related-public-heading">
+                <div>
+                    <p class="eyebrow">Keep studying</p>
+                    <h3>Related notes</h3>
+                    <p class="related-public-subtitle">More from ${escapeHtml(note.subject)}${note.collection ? ` · ${escapeHtml(note.collection)}` : ""}</p>
+                </div>
+                <button type="button" class="related-browse-link" id="browse-related-subject">Browse ${escapeHtml(note.subject)} <span aria-hidden="true">→</span></button>
+            </div>
+            <div class="related-public-grid">
+                ${candidates.map((candidate) => `
+                    <article class="related-public-card">
+                        <div class="related-public-meta">
+                            <span class="subject-chip">${escapeHtml(candidate.subject || "General")}</span>
+                            ${candidate.collection ? `<span class="related-public-topic">${escapeHtml(candidate.collection)}</span>` : ""}
+                        </div>
+                        <h4><a href="${escapeHtml(publicNoteSeoUrl(candidate.noteId, candidate.title))}" data-related-id="${escapeHtml(candidate.noteId)}">${escapeHtml(candidate.title || "Untitled note")} <span aria-hidden="true">↗</span></a></h4>
+                        <p class="related-public-description">${escapeHtml(candidate.description || "No description provided.")}</p>
+                        <span class="related-public-author">♡ ${Number(candidate.helpfulCount || 0).toLocaleString()} helpful · By ${candidate.contributorId ? `<a class="public-contributor-link" href="${escapeHtml(contributorShareUrl(candidate.contributorId))}" data-related-contributor="${escapeHtml(candidate.contributorId)}">${escapeHtml(candidate.publicAuthor || "Community member")}</a>` : escapeHtml(candidate.publicAuthor || "Community member")}</span>
+                    </article>
+                `).join("")}
+            </div>
+        `;
+        container.hidden = false;
+        container.querySelector("#browse-related-subject")?.addEventListener("click", () => browsePublicTaxonomy(note.subject));
+        container.querySelectorAll("[data-related-contributor]").forEach((link) => {
+            link.addEventListener("click", (event) => {
+                event.preventDefault();
+                openPublicContributor(link.dataset.relatedContributor);
+            });
+        });
+        container.querySelectorAll("[data-related-id]").forEach((link) => {
+            link.addEventListener("click", (event) => {
+                event.preventDefault();
+                openPublicNote(link.dataset.relatedId);
+            });
+        });
+    } catch (error) {
+        // Discovery is optional: failed requests must not prevent viewing the source note.
+        if (container.isConnected && container.dataset.noteId === currentNoteId) {
+            container.hidden = true;
+        }
+        console.warn("Related notes unavailable:", error);
+    }
+}
+
+// Helpful votes are per account; never infer a vote from public counts.
+async function initializeHelpfulButton(note) {
+    const button = document.getElementById("helpful-public-note");
+    const status = document.getElementById("helpful-public-feedback");
+    const count = document.getElementById("public-helpful-count");
+    if (!button || !status || !count) return;
+
+    let voted = false;
+    let currentCount = Math.max(0, Number(note.helpfulCount || 0));
+    const draw = () => {
+        count.textContent = currentCount.toLocaleString() + (currentCount === 1 ? " helpful vote" : " helpful votes");
+        button.textContent = voted ? "♥ Marked helpful" : "♡ Helpful";
+        button.setAttribute("aria-pressed", String(voted));
+    };
+    draw();
+    if (!isAuthenticated()) {
+        button.textContent = "Sign in to vote";
+        button.setAttribute("aria-pressed", "false");
+        button.addEventListener("click", signIn);
+        return;
+    }
+
+    // Owner cannot vote on their own material.
+    const ownNote = notesState.notes.some((item) => item.noteId === note.noteId);
+    if (ownNote) {
+        button.disabled = true;
+        button.textContent = "Your note";
+        status.textContent = "Authors cannot vote on their own notes.";
+        return;
+    }
+    button.disabled = true;
+    status.textContent = "Checking vote...";
+    try {
+        const response = await authenticatedFetch(`/api/public/notes/${encodeURIComponent(note.noteId)}/helpful`);
+        const data = await response.json();
+        if (!button.isConnected || button.dataset.noteId !== note.noteId) return;
+        if (!response.ok) throw new Error(data.error || "Unable to check helpful vote.");
+        voted = Boolean(data.helpful);
+        currentCount = Math.max(0, Number(data.helpfulCount || 0));
+        status.textContent = "";
+    } catch (error) {
+        if (!button.isConnected) return;
+        button.disabled = false;
+        button.textContent = "Retry helpful status";
+        status.textContent = "Couldn't check vote status.";
+        button.addEventListener("click", () => initializeHelpfulButton(note), {once: true});
+        return;
+    }
+    button.disabled = false;
+    draw();
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        status.textContent = "Updating...";
+        try {
+            const response = await authenticatedFetch(
+                `/api/public/notes/${encodeURIComponent(note.noteId)}/helpful`,
+                {method: voted ? "DELETE" : "PUT"}
+            );
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Unable to update helpful vote.");
+            if (!button.isConnected || button.dataset.noteId !== note.noteId) return;
+            voted = Boolean(data.helpful);
+            currentCount = Math.max(0, Number(data.helpfulCount || 0));
+            status.textContent = voted ? "Thanks for your feedback!" : "Vote removed.";
+            draw();
+        } catch (error) {
+            if (button.isConnected) status.textContent = error.message || "Unable to update vote.";
+        } finally {
+            if (button.isConnected) button.disabled = false;
+        }
+    });
+}
+
+// Saved Notes contains references only; note content always comes from the live public API.
+async function loadSavedNotes(append = false) {
+    if (!isAuthenticated()) return;
+    const version = ++notesState.savedLoadVersion;
+    const grid = document.getElementById("saved-notes-grid");
+    const status = document.getElementById("saved-notes-status");
+    const more = document.getElementById("saved-notes-more");
+    const requestToken = getAccessToken();
+    if (!append) {
+        notesState.savedCursor = null;
+        grid.replaceChildren();
+        status.hidden = false;
+        status.textContent = "Loading saved notes...";
+    }
+    more.disabled = true;
+    more.hidden = true;
+    try {
+        const url = new URL(apiUrl("/api/saved-notes"));
+        if (append && notesState.savedCursor) url.searchParams.set("cursor", notesState.savedCursor);
+        const response = await authenticatedFetch(url.pathname + url.search);
+        const data = await response.json();
+        if (version !== notesState.savedLoadVersion || requestToken !== getAccessToken()) return;
+        if (!response.ok) throw new Error(data.error || "Unable to load saved notes.");
+
+        for (const note of (data.notes || [])) {
+            const card = document.createElement("article");
+            card.className = "saved-note-card";
+            if (note.available) {
+                card.innerHTML = `
+                    <div class="saved-note-card-top"><span class="subject-chip">${escapeHtml(note.subject || "General")}</span><span class="saved-note-date">Saved ${escapeHtml(formatDate(note.savedAt))}</span></div>
+                    <h3><a href="${escapeHtml(publicNoteSeoUrl(note.noteId, note.title))}" class="saved-note-open">${escapeHtml(note.title || "Untitled note")}</a></h3>
+                    ${note.collection ? `<p class="public-note-collection">${escapeHtml(note.collection)}</p>` : ""}
+                    <p class="saved-note-description">${escapeHtml(note.description || "No description provided.")}</p>
+                    <div class="saved-note-footer"><span>By ${escapeHtml(note.publicAuthor || "Community member")} · ♡ ${Number(note.helpfulCount || 0).toLocaleString()} helpful</span><button type="button" class="button button-text saved-note-remove">Remove</button></div>
+                `;
+                card.querySelector(".saved-note-open").addEventListener("click", (event) => {
+                    event.preventDefault();
+                    setActiveView("explore");
+                    openPublicNote(note.noteId);
+                });
+            } else {
+                card.classList.add("saved-note-unavailable");
+                card.innerHTML = `
+                    <h3>Saved note unavailable</h3>
+                    <p>This note is no longer public. Its contents are not accessible.</p>
+                    <div class="saved-note-footer"><span>Your bookmark is retained</span><button type="button" class="button button-text saved-note-remove">Remove</button></div>
+                `;
+            }
+            card.querySelector(".saved-note-remove").addEventListener("click", () => removeSavedCard(note.noteId, card));
+            grid.appendChild(card);
+        }
+        notesState.savedCursor = data.nextCursor || null;
+        more.hidden = !notesState.savedCursor;
+        more.disabled = false;
+        status.hidden = true;
+        if (!grid.children.length) {
+            grid.innerHTML = '<div class="empty-state"><h3>Nothing saved yet</h3><p>Explore public notes and choose Save Note to build your study library.</p><button type="button" class="button button-secondary" id="saved-explore">Explore notes</button></div>';
+            grid.querySelector("#saved-explore").addEventListener("click", () => setActiveView("explore"));
+        }
+    } catch (error) {
+        if (version !== notesState.savedLoadVersion || requestToken !== getAccessToken()) return;
+        status.hidden = false;
+        status.textContent = error.message || "Unable to load saved notes.";
+        more.hidden = !notesState.savedCursor;
+        more.disabled = false;
+        if (!grid.children.length) {
+            grid.innerHTML = '<div class="empty-state"><h3>Saved Notes is unavailable</h3><p>Please retry loading your library.</p><button class="button button-secondary" id="saved-retry" type="button">Try again</button></div>';
+            grid.querySelector("#saved-retry").addEventListener("click", () => loadSavedNotes());
+        }
+    }
+}
+
+async function removeSavedCard(noteId, card) {
+    const button = card.querySelector(".saved-note-remove");
+    button.disabled = true;
+    try {
+        const response = await authenticatedFetch(`/api/saved-notes/${encodeURIComponent(noteId)}`, {method: "DELETE"});
+        if (!response.ok) throw new Error("Unable to remove saved note.");
+        card.remove();
+        showAppNotice("Removed from Saved Notes.", "success");
+        // Avoid immediately reloading an eventually consistent index after deletion.
+        const grid = document.getElementById("saved-notes-grid");
+        if (notesState.activeView === "saved-notes" && !grid.children.length && !notesState.savedCursor) {
+            grid.innerHTML = '<div class="empty-state"><h3>Nothing saved yet</h3><p>Explore public notes and choose Save Note to build your study library.</p><button type="button" class="button button-secondary" id="saved-explore">Explore notes</button></div>';
+            grid.querySelector("#saved-explore").addEventListener("click", () => setActiveView("explore"));
+        }
+    } catch (error) {
+        button.disabled = false;
+        showAppNotice(error.message || "Unable to remove saved note.", "error");
+    }
+}
+
+async function initializeSaveButton(noteId) {
+    const button = document.getElementById("save-public-note");
+    const feedback = document.getElementById("save-public-feedback");
+    if (!button) return;
+    if (!isAuthenticated()) {
+        button.textContent = "Sign in to save";
+        button.addEventListener("click", signIn);
+        return;
+    }
+    button.disabled = true;
+    button.textContent = "Checking saved status...";
+    let saved = false;
+    let automaticallySaved = false;
+    // Annotation creation and bookmarking happen atomically in the backend.
+    // Keep this existing button's state in sync without attaching extra click handlers.
+    button.addEventListener("study:auto-saved", () => {
+        automaticallySaved = true;
+        saved = true;
+        button.textContent = "✓ Saved — remove";
+        button.setAttribute("aria-pressed", "true");
+        feedback.textContent = "In your Saved Notes library";
+    });
+    try {
+        const response = await authenticatedFetch(`/api/saved-notes/${encodeURIComponent(noteId)}`);
+        const data = await response.json();
+        if (!button.isConnected || button.dataset.noteId !== noteId) return;
+        if (!response.ok) throw new Error(data.error || "Unable to check saved note.");
+        saved = automaticallySaved || Boolean(data.saved);
+    } catch (error) {
+        if (!button.isConnected) return;
+        if (!automaticallySaved) {
+            button.textContent = "Try saved status again";
+            button.disabled = false;
+            feedback.textContent = "Saved status unavailable. Please retry.";
+            button.addEventListener("click", () => initializeSaveButton(noteId), {once: true});
+            return;
+        }
+        saved = true;
+    }
+    button.disabled = false;
+    const draw = () => {
+        button.textContent = saved ? "✓ Saved — remove" : "☆ Save Note";
+        button.setAttribute("aria-pressed", String(saved));
+        feedback.textContent = saved ? "In your Saved Notes library" : "";
+    };
+    draw();
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+            const response = await authenticatedFetch(`/api/saved-notes/${encodeURIComponent(noteId)}`, {method: saved ? "DELETE" : "PUT"});
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Unable to update saved note.");
+            if (!button.isConnected || button.dataset.noteId !== noteId) return;
+            saved = Boolean(data.saved);
+            draw();
+            showAppNotice(saved ? "Added to Saved Notes." : "Removed from Saved Notes.", "success");
+        } catch (error) {
+            if (button.isConnected) {
+                feedback.textContent = error.message || "Unable to save note.";
+            }
+        } finally {
+            if (button.isConnected) button.disabled = false;
+        }
+    });
+}
+
+// Reading preferences are local to the current browser, never shared with note authors.
+const READER_PREFERENCES_KEY = "studygrounds.reader.preferences.v1";
+function getReaderPreferences() {
+    try {
+        const stored = JSON.parse(window.localStorage.getItem(READER_PREFERENCES_KEY) || "{}");
+        return {
+            size: ["normal", "large", "extra"].includes(stored.size) ? stored.size : "normal",
+            width: stored.width === "comfortable" ? "comfortable" : "wide"
+        };
+    } catch {
+        return {size: "normal", width: "wide"};
+    }
+}
+function applyReaderPreferences() {
+    const prefs = getReaderPreferences();
+    const panel = document.getElementById("public-note-detail");
+    panel.dataset.readerSize = prefs.size;
+    panel.dataset.readerWidth = prefs.width;
+    const size = document.getElementById("reader-text-size");
+    const width = document.getElementById("reader-width");
+    if (size) size.value = prefs.size;
+    if (width) width.value = prefs.width;
+}
+function updateReaderPreference(name, value) {
+    const prefs = getReaderPreferences();
+    prefs[name] = value;
+    try { window.localStorage.setItem(READER_PREFERENCES_KEY, JSON.stringify(prefs)); } catch {}
+    applyReaderPreferences();
+}
+function exitPublicReaderFocus() {
+    document.body.classList.remove("public-reader-focus");
+    const button = document.getElementById("reader-focus-toggle");
+    if (button) {
+        button.textContent = "Focus mode";
+        button.setAttribute("aria-pressed", "false");
+    }
+}
+function togglePublicReaderFocus() {
+    const enabled = document.body.classList.toggle("public-reader-focus");
+    const button = document.getElementById("reader-focus-toggle");
+    if (button) {
+        button.textContent = enabled ? "Exit focus" : "Focus mode";
+        button.setAttribute("aria-pressed", String(enabled));
+    }
+    if (enabled) document.getElementById("reader-source-toolbar")?.scrollIntoView({block: "start"});
+    else button?.focus({preventScroll: true});
+}
+function setupPublicReaderControls() {
+    applyReaderPreferences();
+    document.getElementById("reader-focus-toggle")?.addEventListener("click", togglePublicReaderFocus);
+    document.getElementById("reader-text-size")?.addEventListener("change", (event) => {
+        updateReaderPreference("size", event.target.value);
+    });
+    document.getElementById("reader-width")?.addEventListener("change", (event) => {
+        updateReaderPreference("width", event.target.value);
+    });
+}
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.classList.contains("public-reader-focus")) {
+        exitPublicReaderFocus();
+        document.getElementById("reader-focus-toggle")?.focus({preventScroll: true});
+    }
+});
+
+// Study activity is account-private. The backend verifies current public visibility
+// and returns no old note titles or files if a source has been removed.
+function friendlyStudyDate(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"});
+}
+
+async function fetchStudyDashboard() {
+    const response = await authenticatedFetch("/api/study");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to load study history.");
+    return data;
+}
+
+async function loadStudyDashboard() {
+    if (!isAuthenticated()) return;
+    const version = ++notesState.studyLoadVersion;
+    const token = getAccessToken();
+    const status = document.getElementById("study-history-status");
+    status.hidden = false;
+    status.textContent = "Loading study history...";
+    try {
+        const data = await fetchStudyDashboard();
+        if (version !== notesState.studyLoadVersion || token !== getAccessToken()) return;
+        notesState.studyDashboard = data;
+        notesState.studyActiveSession = (data.sessions || []).find(item => item.status === "active") || null;
+        renderStudyDashboard(data);
+        status.hidden = true;
+    } catch (error) {
+        if (version !== notesState.studyLoadVersion || token !== getAccessToken()) return;
+        status.hidden = false;
+        status.textContent = error.message || "Unable to load study history.";
+    }
+}
+
+function renderStudyDashboard(data) {
+    const progressContainer = document.getElementById("study-continue-list");
+    const sessionsContainer = document.getElementById("study-sessions-list");
+    if (!progressContainer || !sessionsContainer) return;
+    progressContainer.replaceChildren();
+    sessionsContainer.replaceChildren();
+
+    const recent = (data.continueStudying || []);
+    const sessions = (data.sessions || []);
+    const openNote = async (note) => {
+        await setActiveView("explore");
+        if (notesState.activeView === "explore") openPublicNote(note.noteId, true, note.fileId || null);
+    };
+    for (const note of recent) {
+        const card = document.createElement("article");
+        card.className = "study-history-card";
+        card.innerHTML = note.available
+            ? `<div><h4>${escapeHtml(note.title || "Untitled note")}</h4><p>${escapeHtml(note.subject || "Study material")} · Last opened ${escapeHtml(friendlyStudyDate(note.lastOpenedAt))}</p></div><button type="button" class="button button-secondary">Continue studying</button>`
+            : '<div><h4>Note unavailable</h4><p>This study source is no longer public.</p></div>';
+        if (note.available) card.querySelector("button").addEventListener("click", () => openNote(note));
+        progressContainer.appendChild(card);
+    }
+    if (!recent.length) progressContainer.innerHTML = '<p class="status-text">Open a public note to begin your study history.</p>';
+
+    for (const session of sessions) {
+        const card = document.createElement("article");
+        card.className = "study-history-card";
+        const active = session.status === "active";
+        card.innerHTML = `
+            <div>
+                <h4>${escapeHtml(session.available ? session.title : "Note unavailable")}</h4>
+                <p>${escapeHtml(friendlyStudyDate(session.startedAt))} · ${active ? "In progress" : `${Number(session.minutes || 0)} minute${Number(session.minutes || 0) === 1 ? "" : "s"} studied`}</p>
+            </div>
+            ${active ? '<button type="button" class="button button-secondary" data-finish-study>Finish session</button>' : ""}
+        `;
+        if (active) card.querySelector("[data-finish-study]").addEventListener("click", async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+                await finishStudySession(session);
+                loadStudyDashboard();
+            } catch (error) {
+                button.disabled = false;
+                showAppNotice(error.message, "error");
+            }
+        });
+        sessionsContainer.appendChild(card);
+    }
+    if (!sessions.length) sessionsContainer.innerHTML = '<p class="status-text">Completed sessions will appear here after you finish studying.</p>';
+}
+
+let studyPositionSaveQueue = Promise.resolve();
+function saveStudySource(noteId, fileId) {
+    if (!isAuthenticated() || !fileId) return;
+    const accountToken = getAccessToken();
+    // Serialize quick source switches so an older request cannot win the race.
+    studyPositionSaveQueue = studyPositionSaveQueue.catch(() => {}).then(async () => {
+        if (!isAuthenticated() || getAccessToken() !== accountToken) return;
+        try {
+            const response = await authenticatedFetch(`/api/study/progress/${encodeURIComponent(noteId)}`, {
+                method: "PUT",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({fileId})
+            });
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.error || "Unable to remember source.");
+            }
+        } catch (error) {
+            console.warn("Couldn't save study position:", error);
+        }
+    });
+}
+
+function renderStudySessionControls(noteId) {
+    const start = document.getElementById("start-study-session");
+    const finish = document.getElementById("finish-study-session");
+    const status = document.getElementById("study-session-status");
+    if (!start || !finish || !status) return;
+    const active = notesState.studyActiveSession;
+    const isCurrent = active && active.noteId === noteId;
+    start.hidden = Boolean(active);
+    finish.hidden = !isCurrent;
+    status.textContent = isCurrent ? `Started ${friendlyStudyDate(active.startedAt)}`
+        : active ? "Finish your existing session in Study History before starting another." : "Study time is recorded only when you start a session.";
+}
+
+async function startStudySession(noteId) {
+    const button = document.getElementById("start-study-session");
+    if (button) button.disabled = true;
+    try {
+        if (notesState.studyActiveSession) throw new Error("Finish your previous session before starting another.");
+        const response = await authenticatedFetch("/api/study/sessions", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({noteId})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to start session.");
+        notesState.studyActiveSession = data.session;
+        renderStudySessionControls(noteId);
+        showAppNotice("Study session started.", "success");
+    } catch (error) {
+        showAppNotice(error.message, "error");
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function finishStudySession(session) {
+    const response = await authenticatedFetch(`/api/study/sessions/${encodeURIComponent(session.sessionId)}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({startedAt: session.startedAt})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to finish session.");
+    if (notesState.studyActiveSession?.sessionId === session.sessionId) notesState.studyActiveSession = null;
+    renderStudySessionControls(session.noteId);
+    showAppNotice(`Study session finished · ${Number(data.session?.minutes || 0)} minutes recorded.`, "success");
+}
+
+async function setupStudySessionForReader(noteId, preferredFileId) {
+    if (!isAuthenticated()) return;
+    const currentToken = getAccessToken();
+    const status = document.getElementById("study-session-status");
+    if (status) status.textContent = "Loading your private study activity...";
+    try {
+        const data = await fetchStudyDashboard();
+        if (getAccessToken() !== currentToken || activePublicReader?.noteId !== noteId) return;
+        notesState.studyDashboard = data;
+        notesState.studyActiveSession = (data.sessions || []).find(s => s.status === "active") || null;
+        renderStudySessionControls(noteId);
+        const remembered = (data.continueStudying || []).find(item => item.noteId === noteId && item.available);
+        // An explicit file switch made while this request was in flight wins.
+        if (activePublicReader.manualSelection) return;
+        const targetFile = preferredFileId || remembered?.fileId;
+        const index = targetFile ? activePublicReader.files.findIndex(file => file.fileId === targetFile) : -1;
+        if (index >= 0) {
+            if (index !== activePublicReader.index) displayPublicSource(index, false, false);
+        } else if (activePublicReader.files[0]?.fileId) {
+            // Create an initial resume point only after checking for an existing one.
+            saveStudySource(noteId, activePublicReader.files[0].fileId);
+        }
+    } catch (error) {
+        if (activePublicReader?.noteId !== noteId) return;
+        if (status) status.textContent = "Study activity unavailable. You can still read this note.";
+    }
+}
+
+// Private study notes and highlights. Highlight anchors reference one stable
+// extracted-preview text block; never attempt to annotate browser-owned PDF iframes.
+let readerAnnotations = [];
+let readerSelectedExcerpt = null;
+let readerAnnotationsReady = false;
+let annotationRequestVersion = 0;
+
+function readerAnnotationTargets() {
+    const root = document.getElementById("source-active-viewer");
+    if (!root) return [];
+    const targets = root.querySelectorAll(
+        ".document-preview-body > p, .document-preview-body > h1, .document-preview-body > h2, " +
+        ".document-preview-body > h3, .document-preview-body > h4, .document-preview-body > h5, " +
+        ".document-preview-body > h6, .document-preview-table td, .ppt-slide-content h4, .ppt-slide-content li"
+    );
+    return Array.from(targets).map((node, index) => {
+        node.dataset.studyTarget = String(index);
+        return node;
+    });
+}
+
+function applyReaderHighlights() {
+    const reader = activePublicReader;
+    if (!reader) return;
+    const fileId = reader.files[reader.index]?.fileId;
+    const targets = readerAnnotationTargets();
+    for (const target of targets) {
+        // Our extracted-preview targets contain plain text; reconstruct safely
+        // from textContent to avoid stale/nested marks when an item is removed.
+        const source = target.textContent || "";
+        const index = Number(target.dataset.studyTarget);
+        const annotations = readerAnnotations.filter(item => item.kind === "highlight" &&
+            item.fileId === fileId && item.anchor?.target === index &&
+            source.slice(item.anchor.start, item.anchor.end) === item.anchor.quote);
+        annotations.sort((a,b) => a.anchor.start - b.anchor.start || a.anchor.end - b.anchor.end);
+        const fragments = document.createDocumentFragment();
+        let cursor = 0;
+        for (const item of annotations) {
+            const {start,end} = item.anchor;
+            if (start < cursor || end <= start) continue;
+            fragments.append(document.createTextNode(source.slice(cursor, start)));
+            const mark = document.createElement("mark");
+            mark.className = "reader-private-highlight";
+            mark.dataset.color = item.color || "yellow";
+            mark.dataset.highlightId = item.id;
+            mark.textContent = source.slice(start, end);
+            mark.title = "Your private highlight";
+            fragments.append(mark);
+            cursor = end;
+        }
+        fragments.append(document.createTextNode(source.slice(cursor)));
+        target.replaceChildren(fragments);
+    }
+}
+
+function captureReaderSelection() {
+    const reader = activePublicReader;
+    if (!isAuthenticated() || !reader) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const startElement = range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement : range.startContainer;
+    const endElement = range.endContainer.nodeType === Node.TEXT_NODE
+        ? range.endContainer.parentElement : range.endContainer;
+    const startTarget = startElement?.closest?.("[data-study-target]");
+    const endTarget = endElement?.closest?.("[data-study-target]");
+    if (!startTarget || startTarget !== endTarget ||
+        !document.getElementById("source-active-viewer")?.contains(startTarget)) {
+        readerSelectedExcerpt = null;
+        return;
+    }
+    const excerpt = range.toString();
+    if (!excerpt.trim() || excerpt.length > 500) {
+        readerSelectedExcerpt = null;
+        const status = document.getElementById("reader-annotation-status");
+        if (status) status.textContent = "Select up to 500 characters within a single preview paragraph or slide item.";
+        return;
+    }
+    const before = range.cloneRange();
+    before.selectNodeContents(startTarget);
+    before.setEnd(range.startContainer, range.startOffset);
+    const start = before.toString().length;
+    const end = start + excerpt.length;
+    if (startTarget.textContent.slice(start, end) !== excerpt) return;
+    readerSelectedExcerpt = {
+        noteId: reader.noteId,
+        fileId: reader.files[reader.index]?.fileId,
+        anchor: {target: Number(startTarget.dataset.studyTarget), start, end, quote: excerpt},
+    };
+    const status = document.getElementById("reader-annotation-status");
+    if (status) status.textContent = `Selected ${excerpt.length} characters for highlighting.`;
+}
+
+document.addEventListener("selectionchange", () => {
+    if (document.getElementById("source-active-viewer") && isAuthenticated()) {
+        captureReaderSelection();
+    }
+});
+
+function renderReaderAnnotations() {
+    const reader = activePublicReader;
+    const list = document.getElementById("reader-annotations-list");
+    if (!reader || !list) return;
+    const fileId = reader.files[reader.index]?.fileId;
+    const items = readerAnnotations.filter(item => item.fileId === fileId);
+    list.replaceChildren();
+    if (!items.length) {
+        list.innerHTML = '<p class="status-text">No private notes or highlights on this source yet.</p>';
+    }
+    for (const item of items) {
+        const card = document.createElement("article");
+        card.className = "reader-annotation-card";
+        const label = item.kind === "highlight" ? "Highlight" : "Personal note";
+        card.innerHTML = `<div><strong>${label}</strong>${item.kind === "highlight"
+            ? `<p class="reader-annotation-quote">“${escapeHtml(item.anchor?.quote || "")}”</p>`
+            : `<p>${escapeHtml(item.text)}</p>`}</div>
+            <button type="button" class="button button-text" aria-label="Remove ${label.toLowerCase()}">Remove</button>`;
+        card.querySelector("button").addEventListener("click", async (event) => {
+            const button = event.currentTarget;
+            const token = getAccessToken();
+            button.disabled = true;
+            try {
+                const response = await authenticatedFetch(
+                    `/api/study/annotations/${encodeURIComponent(reader.noteId)}/${encodeURIComponent(item.id)}`,
+                    {method: "DELETE"});
+                if (!response.ok) throw new Error("Unable to remove annotation.");
+                if (activePublicReader?.noteId !== reader.noteId || token !== getAccessToken()) return;
+                readerAnnotations = readerAnnotations.filter(entry => entry.id !== item.id);
+                readerSelectedExcerpt = null;
+                applyReaderHighlights();
+                renderReaderAnnotations();
+            } catch (error) {
+                button.disabled = false;
+                showAppNotice(error.message, "error");
+            }
+        });
+        list.append(card);
+    }
+    const supported = /\.(docx|pages|pptx)$/i.test(reader.files[reader.index]?.filename || "");
+    const hint = document.getElementById("reader-highlight-hint");
+    const button = document.getElementById("reader-highlight-submit");
+    if (button) button.disabled = !supported || !readerAnnotationsReady;
+    const saveNote = document.getElementById("reader-annotation-submit");
+    if (saveNote) saveNote.disabled = !readerAnnotationsReady;
+    if (hint) hint.textContent = supported
+        ? "Select text within one paragraph, heading or slide item, then choose a color and save the highlight."
+        : "Inline highlighting is available for Word, Pages and PowerPoint previews. Personal notes work on any source.";
+}
+
+async function loadReaderAnnotations(noteId) {
+    if (!isAuthenticated()) return;
+    const version = ++annotationRequestVersion;
+    readerAnnotationsReady = false;
+    renderReaderAnnotations();
+    const retry = document.getElementById("reader-annotations-retry");
+    if (retry) retry.hidden = true;
+    const token = getAccessToken();
+    const status = document.getElementById("reader-annotation-status");
+    if (status) status.textContent = "Loading private annotations...";
+    try {
+        const response = await authenticatedFetch(`/api/study/annotations/${encodeURIComponent(noteId)}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to load annotations.");
+        if (version !== annotationRequestVersion || token !== getAccessToken() ||
+            activePublicReader?.noteId !== noteId) return;
+        readerAnnotations = data.annotations || [];
+        readerAnnotationsReady = true;
+        if (retry) retry.hidden = true;
+        if (status) status.textContent = "Only you can see these annotations.";
+        applyReaderHighlights();
+        renderReaderAnnotations();
+    } catch (error) {
+        if (version !== annotationRequestVersion || activePublicReader?.noteId !== noteId) return;
+        readerAnnotationsReady = false;
+        renderReaderAnnotations();
+        if (retry) retry.hidden = false;
+        if (status) status.textContent = error.message || "Private annotations are unavailable.";
+    }
+}
+
+async function addReaderAnnotation(kind) {
+    const reader = activePublicReader;
+    if (!reader || !isAuthenticated() || !readerAnnotationsReady) return;
+    const token = getAccessToken();
+    const noteId = reader.noteId, fileId = reader.files[reader.index]?.fileId;
+    const textInput = document.getElementById("reader-annotation-text");
+    const status = document.getElementById("reader-annotation-status");
+    const text = (textInput?.value || "").trim();
+    if (kind === "note" && !text) {
+        if (status) status.textContent = "Write your note first.";
+        return;
+    }
+    const selected = readerSelectedExcerpt;
+    if (kind === "highlight" && (!selected || selected.noteId !== noteId || selected.fileId !== fileId)) {
+        if (status) status.textContent = "Select text inside this source's extracted preview first.";
+        return;
+    }
+    if (kind === "highlight") {
+        const overlap = readerAnnotations.some(item => item.kind === "highlight" &&
+            item.fileId === fileId && item.anchor?.target === selected.anchor.target &&
+            item.anchor.start < selected.anchor.end && selected.anchor.start < item.anchor.end);
+        if (overlap) {
+            if (status) status.textContent = "That text overlaps an existing highlight. Remove the old highlight first.";
+            return;
+        }
+    }
+    const button = document.getElementById(kind === "note" ? "reader-annotation-submit" : "reader-highlight-submit");
+    button.disabled = true;
+    try {
+        const payload = {kind, fileId, text: kind === "note" ? text : ""};
+        if (kind === "highlight") {
+            payload.anchor = selected.anchor;
+            payload.color = document.getElementById("reader-highlight-color").value;
+        }
+        const response = await authenticatedFetch(`/api/study/annotations/${encodeURIComponent(noteId)}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to save annotation.");
+        if (activePublicReader?.noteId !== noteId || token !== getAccessToken()) return;
+        readerAnnotations.unshift(data.annotation);
+        if (data.saved === true) {
+            const saveButton = document.getElementById("save-public-note");
+            if (saveButton?.dataset.noteId === noteId) {
+                saveButton.dispatchEvent(new Event("study:auto-saved"));
+            }
+        }
+        if (kind === "note") textInput.value = "";
+        readerSelectedExcerpt = null;
+        window.getSelection()?.removeAllRanges();
+        applyReaderHighlights();
+        renderReaderAnnotations();
+        if (status) status.textContent = data.saved === true
+            ? "Saved privately. This note was also added to Saved Notes."
+            : "Saved privately to your account.";
+    } catch (error) {
+        if (status) status.textContent = error.message || "Unable to save annotation.";
+    } finally {
+        if (button?.isConnected) button.disabled = false;
+    }
+}
+
+function setupReaderAnnotations(noteId) {
+    if (!isAuthenticated()) return;
+    readerAnnotationsReady = false;
+    readerAnnotations = [];
+    readerSelectedExcerpt = null;
+    document.getElementById("reader-annotation-submit")?.addEventListener("click", () => addReaderAnnotation("note"));
+    document.getElementById("reader-highlight-submit")?.addEventListener("click", () => addReaderAnnotation("highlight"));
+    document.getElementById("reader-annotations-retry")?.addEventListener("click", () => loadReaderAnnotations(noteId));
+    renderReaderAnnotations();
+    loadReaderAnnotations(noteId);
+}
+
+// Source navigation keeps one viewer mounted at a time to avoid expensive
+// simultaneous document previews on large notes or mobile devices.
+let activePublicReader = null;
+let sourceRenderVersion = 0;
+
+async function displayPublicSource(index, focusHeading = false, savePosition = true) {
+    const reader = activePublicReader;
+    if (!reader) return;
+    const next = Math.max(0, Math.min(reader.files.length - 1, Number(index) || 0));
+    if (!reader.files.length) return;
+    reader.index = next;
+    if (savePosition) {
+        reader.manualSelection = true;
+        saveStudySource(reader.noteId, reader.files[next].fileId);
+    }
+    const version = ++sourceRenderVersion;
+    readerSelectedExcerpt = null;
+    const container = document.getElementById("source-active-viewer");
+    if (!container || container.dataset.readerNote !== reader.noteId) return;
+    const file = reader.files[next];
+    container.innerHTML = renderEmbeddedSource(file, next);
+    renderReaderAnnotations();
+    const status = document.getElementById("source-position");
+    if (status) status.textContent = `Source ${next + 1} of ${reader.files.length}`;
+    document.getElementById("source-previous").disabled = next === 0;
+    document.getElementById("source-next").disabled = next === reader.files.length - 1;
+    document.querySelectorAll("[data-reader-source]").forEach((button) => {
+        const selected = Number(button.dataset.readerSource) === next;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-current", selected ? "true" : "false");
+        button.setAttribute("aria-pressed", String(selected));
+    });
+    if (focusHeading) {
+        container.querySelector(".source-viewer-header h3")?.setAttribute("tabindex", "-1");
+        container.querySelector(".source-viewer-header h3")?.focus({preventScroll: true});
+    }
+    // Existing native document preview loaders only inspect mounted elements.
+    // A file switch invalidates earlier preview responses by detaching the node.
+    await Promise.all([
+        loadNativeExcelPreviews(reader.noteId),
+        loadNativePowerPointPreviews(reader.noteId),
+        loadNativeDocumentPreviews(reader.noteId)
+    ]);
+    if (version !== sourceRenderVersion) return;
+    applyReaderHighlights();
+}
+
+function setupPublicSourceReader(noteId, files) {
+    activePublicReader = {noteId, files, index: 0, manualSelection: false};
+    const container = document.getElementById("source-active-viewer");
+    if (!container) return;
+    container.dataset.readerNote = noteId;
+    document.querySelectorAll("[data-reader-source]").forEach((button) => {
+        button.addEventListener("click", () => displayPublicSource(Number(button.dataset.readerSource), true));
+    });
+    document.getElementById("source-previous")?.addEventListener("click", () => displayPublicSource(activePublicReader.index - 1, true));
+    document.getElementById("source-next")?.addEventListener("click", () => displayPublicSource(activePublicReader.index + 1, true));
+    // Do not overwrite a previous resume position before it has loaded.
+    displayPublicSource(0, false, false);
+}
+
+async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) {
+    ++publicBrowseRequestVersion;
+    ++sourceRenderVersion;
+    ++annotationRequestVersion;
+    readerAnnotations = [];
+    readerSelectedExcerpt = null;
+    readerAnnotationsReady = false;
+    activePublicReader = null;
+    exitPublicReaderFocus();
+    document.getElementById("public-contributor-detail").hidden = true;
     const grid = document.getElementById("public-grid");
     const detail = document.getElementById("public-note-detail");
     const content = document.getElementById("public-note-content");
@@ -2357,6 +3803,11 @@ async function openPublicNote(noteId, updateUrl = true) {
 
         const note = data.note;
         const files = note.files || [];
+        const ownsNote = notesState.notes.some((ownedNote) => ownedNote.noteId === note.noteId);
+        const canReportNote = isAuthenticated() && !ownsNote;
+        const reportState = canReportNote
+            ? await getPublicNoteReportStatus(note.noteId)
+            : {reported: false, report: null};
         const publishedDate = formatDate(note.publishedAt);
 
         if (updateUrl) {
@@ -2367,26 +3818,22 @@ async function openPublicNote(noteId, updateUrl = true) {
 
         const sourceIndex = files.length > 1
             ? `
-                <nav class="public-source-index" aria-label="Source files">
-                    ${files.map((file, index) => {
-                        const sourceId = `source-${escapeHtml(file.fileId || String(index + 1))}`;
-                        return `
-                            <a href="#${sourceId}" class="public-source-index-item">
-                                <span>${index + 1}</span>
-                                <strong>${escapeHtml(file.filename || `Source ${index + 1}`)}</strong>
-                            </a>
-                        `;
-                    }).join("")}
+                <nav class="public-source-index" aria-label="Choose a source file">
+                    ${files.map((file, index) => `
+                        <button type="button" class="public-source-index-item" data-reader-source="${index}" aria-pressed="${index === 0 ? "true" : "false"}">
+                            <span>${index + 1}</span>
+                            <strong>${escapeHtml(file.filename || `Source ${index + 1}`)}</strong>
+                        </button>
+                    `).join("")}
                 </nav>
             `
             : "";
-
         content.innerHTML = `
             <section class="public-note-hero">
                 <div class="public-note-hero-main">
-                    <div class="public-note-taxonomy">
-                        ${note.subject ? `<span class="subject-chip">${escapeHtml(note.subject)}</span>` : ""}
-                        ${note.collection ? `<span class="public-topic-label">${escapeHtml(note.collection)}</span>` : ""}
+                    <div class="public-note-taxonomy" aria-label="Browse note categories">
+                        ${note.subject ? `<button class="subject-chip public-taxonomy-link" id="browse-note-subject" type="button" aria-label="Explore subject ${escapeHtml(note.subject)}">${escapeHtml(note.subject)}</button>` : ""}
+                        ${note.collection ? `<button class="public-topic-label public-taxonomy-link" id="browse-note-topic" type="button" aria-label="Explore topic ${escapeHtml(note.collection)} in ${escapeHtml(note.subject || "all subjects")}">${escapeHtml(note.collection)}</button>` : ""}
                     </div>
                     <h2>${escapeHtml(note.title)}</h2>
                     <p class="public-note-full-description">${escapeHtml(note.description || "No description provided.")}</p>
@@ -2394,43 +3841,178 @@ async function openPublicNote(noteId, updateUrl = true) {
 
                 <div class="public-note-hero-side">
                     <div class="public-note-byline">
-                        <strong>${escapeHtml(note.publicAuthor || "Community member")}</strong>
+                        ${note.contributorId ? `<a class="public-contributor-link" id="note-contributor-link" href="${escapeHtml(contributorShareUrl(note.contributorId))}">${escapeHtml(note.publicAuthor || "Community member")}</a>` : `<strong>${escapeHtml(note.publicAuthor || "Community member")}</strong>`}
                         <span>${Number(note.viewCount || 0)} view${Number(note.viewCount || 0) === 1 ? "" : "s"}</span>
+                        <span id="public-helpful-count">${Number(note.helpfulCount || 0).toLocaleString()} helpful votes</span>
                         ${publishedDate ? `<span>Published ${escapeHtml(publishedDate)}</span>` : ""}
                     </div>
+                    <div class="public-helpful-actions">
+                        <button id="helpful-public-note" type="button" class="button button-secondary" data-note-id="${escapeHtml(note.noteId)}" aria-pressed="false">♡ Helpful</button>
+                        <span id="helpful-public-feedback" class="status-text" role="status" aria-live="polite"></span>
+                    </div>
+                    <div class="public-save-actions">
+                        <button id="save-public-note" type="button" class="button button-secondary" data-note-id="${escapeHtml(note.noteId)}">☆ Save Note</button>
+                        <span id="save-public-feedback" class="status-text" role="status" aria-live="polite"></span>
+                    </div>
                     <button id="share-public-note" class="button button-secondary" type="button">Copy Share Link</button>
+                    ${canReportNote ? `
+                        <button
+                            id="report-note-trigger"
+                            class="report-note-trigger"
+                            type="button"
+                            ${reportState.reported ? "disabled" : ""}
+                        >
+                            ${reportState.reported ? "Already reported" : "Report note"}
+                        </button>
+
+                        ${reportState.reported ? "" : `
+                            <div id="report-note-modal" class="report-note-modal" hidden>
+                                <button class="report-note-backdrop" type="button" aria-label="Close report form"></button>
+                                <section class="report-note-dialog" role="dialog" aria-modal="true" aria-labelledby="report-note-title">
+                                    <div class="report-note-dialog-heading">
+                                        <div>
+                                            <p class="eyebrow">Community safety</p>
+                                            <h3 id="report-note-title">Report this note</h3>
+                                            <p>Tell us what is wrong and the moderation team will review it.</p>
+                                        </div>
+                                        <button id="report-note-close" class="button button-text" type="button" aria-label="Close">Close</button>
+                                    </div>
+                                    <label>
+                                        Reason
+                                        <select id="report-note-reason">
+                                            <option value="">Choose a reason</option>
+                                            <option value="spam">Spam</option>
+                                            <option value="inappropriate">Inappropriate content</option>
+                                            <option value="copyright">Copyright concern</option>
+                                            <option value="misleading">Misleading or inaccurate</option>
+                                            <option value="other">Other</option>
+                                        </select>
+                                    </label>
+                                    <label>
+                                        Details <span>(optional)</span>
+                                        <textarea id="report-note-details" maxlength="1000" rows="4" placeholder="Add context for the moderation team."></textarea>
+                                    </label>
+                                    <div class="report-note-dialog-actions">
+                                        <span id="report-note-status" class="status-text" aria-live="polite"></span>
+                                        <div>
+                                            <button id="report-note-cancel" class="button button-text" type="button">Cancel</button>
+                                            <button id="report-note-submit" class="button button-primary" type="button">Submit report</button>
+                                        </div>
+                                    </div>
+                                </section>
+                            </div>
+                        `}
+                    ` : ""}
                 </div>
             </section>
 
             <section class="public-sources-section">
+                ${isAuthenticated() ? `
+                    <div class="study-session-bar" role="group" aria-label="Your private study session">
+                        <div><strong>Study session</strong><p id="study-session-status" role="status" aria-live="polite">Loading your private study activity...</p></div>
+                        <button type="button" id="start-study-session" class="button button-secondary" hidden>Start studying</button>
+                        <button type="button" id="finish-study-session" class="button button-primary" hidden>Finish session</button>
+                    </div>
+                ` : ""}
+                <div class="reader-preferences-bar" role="group" aria-label="Reader controls">
+                    <button id="reader-focus-toggle" type="button" class="button button-secondary" aria-pressed="false">Focus mode</button>
+                    <label for="reader-text-size">Text size
+                        <select id="reader-text-size" aria-label="Preview text size">
+                            <option value="normal">Normal</option>
+                            <option value="large">Large</option>
+                            <option value="extra">Extra large</option>
+                        </select>
+                    </label>
+                    <label for="reader-width">Reading width
+                        <select id="reader-width" aria-label="Reading width">
+                            <option value="wide">Wide</option>
+                            <option value="comfortable">Comfortable</option>
+                        </select>
+                    </label>
+                </div>
+                <p class="reader-preferences-hint">Text size changes StudyGrounds document previews. PDF zoom and page controls remain in your browser's PDF viewer.</p>
                 <div class="public-sources-heading">
                     <div>
                         <p class="eyebrow">Source material</p>
                         <h3>${files.length} source file${files.length === 1 ? "" : "s"}</h3>
                     </div>
-                    ${files.length > 1 ? '<span class="status-text">Jump to a source below</span>' : ""}
+                    ${files.length > 1 ? '<span class="status-text">Select a file below to switch previews</span>' : ""}
                 </div>
 
                 ${sourceIndex}
-
-                <div class="source-viewer-list">
-                    ${files.length
-                        ? files.map((file, index) => renderEmbeddedSource(file, index)).join("")
-                        : '<p class="note-description">No source files are available for this note.</p>'}
-                </div>
+                ${files.length ? `
+                    <div class="reader-source-toolbar" aria-label="Source navigation">
+                        <button id="source-previous" type="button" class="button button-secondary" disabled>← Previous file</button>
+                        <span id="source-position" role="status" aria-live="polite">Source 1 of ${files.length}</span>
+                        <button id="source-next" type="button" class="button button-secondary" ${files.length === 1 ? "disabled" : ""}>Next file →</button>
+                    </div>
+                    <div id="source-active-viewer" class="source-viewer-list"></div>
+                ` : '<p class="note-description">No source files are available for this note.</p>'}
+                ${isAuthenticated() && files.length ? `
+                    <section class="reader-annotations-panel" aria-label="Your private study annotations">
+                        <div class="reader-annotations-title">
+                            <div><h3>Your private study notes</h3><p>Visible only to your account. The original uploaded document is unchanged.</p></div>
+                        </div>
+                        <label for="reader-annotation-text">Personal note for this source</label>
+                        <textarea id="reader-annotation-text" maxlength="1000" rows="3" placeholder="Write something to remember..."></textarea>
+                        <button id="reader-annotation-submit" type="button" class="button button-secondary">Save personal note</button>
+                        <div class="reader-highlight-controls">
+                            <label for="reader-highlight-color">Highlight color</label>
+                            <select id="reader-highlight-color">
+                                <option value="yellow">Yellow</option><option value="blue">Blue</option>
+                                <option value="green">Green</option><option value="pink">Pink</option>
+                            </select>
+                            <button id="reader-highlight-submit" type="button" class="button button-secondary">Highlight selected text</button>
+                        </div>
+                        <p id="reader-highlight-hint" class="status-text"></p>
+                        <p id="reader-annotation-status" class="status-text" role="status" aria-live="polite"></p>
+                        <button id="reader-annotations-retry" type="button" class="button button-secondary" hidden>Retry loading private notes</button>
+                        <div id="reader-annotations-list" class="reader-annotations-list"></div>
+                    </section>
+                ` : ""}
             </section>
+
+            <section id="related-public-notes" class="related-public-section" data-note-id="${escapeHtml(note.noteId)}" aria-label="Related study notes" hidden></section>
         `;
 
         grid.hidden = true;
         document.querySelector(".explore-controls")?.setAttribute("hidden", "");
         document.getElementById("public-status").hidden = true;
         detail.hidden = false;
+        setupPublicReaderControls();
+        initializeSaveButton(note.noteId);
+        initializeHelpfulButton(note);
+        loadRelatedPublicNotes(note);
+        document.getElementById("browse-note-subject")?.addEventListener("click", () => browsePublicTaxonomy(note.subject));
+        document.getElementById("browse-note-topic")?.addEventListener("click", () => browsePublicTaxonomy(note.subject, note.collection));
+        document.getElementById("note-contributor-link")?.addEventListener("click", (event) => {
+            event.preventDefault();
+            openPublicContributor(note.contributorId);
+        });
         document.getElementById("share-public-note")?.addEventListener("click", (event) => sharePublicNote(noteId, note.title, event));
-        await Promise.all([
-            loadNativeExcelPreviews(noteId),
-            loadNativePowerPointPreviews(noteId),
-            loadNativeDocumentPreviews(noteId)
-        ]);
+        document.getElementById("report-note-trigger")?.addEventListener("click", openReportNoteModal);
+        document.getElementById("report-note-submit")?.addEventListener("click", () => submitPublicNoteReport(noteId));
+        document.getElementById("report-note-close")?.addEventListener("click", closeReportNoteModal);
+        document.getElementById("report-note-cancel")?.addEventListener("click", closeReportNoteModal);
+        document.querySelector(".report-note-backdrop")?.addEventListener("click", closeReportNoteModal);
+        if (files.length) setupPublicSourceReader(noteId, files);
+        if (isAuthenticated() && files.length) setupReaderAnnotations(noteId);
+        if (isAuthenticated()) {
+            document.getElementById("start-study-session")?.addEventListener("click", () => startStudySession(noteId));
+            document.getElementById("finish-study-session")?.addEventListener("click", async (event) => {
+                const session = notesState.studyActiveSession;
+                if (!session) return;
+                event.currentTarget.disabled = true;
+                try {
+                    await finishStudySession(session);
+                } catch (error) {
+                    showAppNotice(error.message, "error");
+                } finally {
+                    if (event.currentTarget.isConnected) event.currentTarget.disabled = false;
+                }
+            });
+            setupStudySessionForReader(noteId, preferredFileId);
+        }
     } catch (error) {
         detail.hidden = true;
         content.innerHTML = "";
@@ -2440,12 +4022,29 @@ async function openPublicNote(noteId, updateUrl = true) {
     }
 }
 
+window.addEventListener("focus", () => {
+    if (!isAuthenticated()) {
+        if (getAccessToken() || sessionStorage.getItem("id_token")) expireLocalSession();
+        else renderSignedInState();
+        return;
+    }
+    if (notesState.activeView === "my-notes") loadNotes();
+    if (notesState.activeView === "saved-notes") loadSavedNotes();
+    if (notesState.activeView === "study-history") loadStudyDashboard();
+});
+
 document.addEventListener("DOMContentLoaded", async () => {
     renderSignedInState();
     await loadPublicTaxonomy();
 
     document.getElementById("hero-sign-in-btn").addEventListener("click", signIn);
     document.getElementById("my-notes-tab").addEventListener("click", () => setActiveView("my-notes"));
+    document.getElementById("saved-notes-tab").addEventListener("click", () => setActiveView("saved-notes"));
+    document.getElementById("study-history-tab").addEventListener("click", () => setActiveView("study-history"));
+    document.getElementById("study-history-refresh").addEventListener("click", () => loadStudyDashboard());
+    document.getElementById("saved-notes-more").addEventListener("click", () => {
+        if (notesState.savedCursor) loadSavedNotes(true);
+    });
     document.getElementById("explore-tab").addEventListener("click", () => {
         const url = new URL(window.location.href);
         url.searchParams.delete("note");
@@ -2456,8 +4055,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("settings-tab").addEventListener("click", () => setActiveView("settings"));
     document.getElementById("analytics-tab").addEventListener("click", () => setActiveView("analytics"));
     document.getElementById("security-tab").addEventListener("click", () => setActiveView("security"));
+    document.getElementById("moderation-tab").addEventListener("click", () => setActiveView("moderation"));
     document.getElementById("refresh-analytics").addEventListener("click", loadAdminAnalytics);
     document.getElementById("refresh-security").addEventListener("click", () => loadAdminSecurity());
+    document.getElementById("refresh-moderation").addEventListener("click", loadAdminModeration);
     document.getElementById("close-security-detail").addEventListener("click", () => {
         document.getElementById("security-user-detail").hidden = true;
         notesState.selectedSecurityUserId = null;
@@ -2494,6 +4095,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadPublicNotes();
     });
     document.getElementById("public-search-clear").addEventListener("click", () => {
+        exploreReturnScrollY = null;
         document.getElementById("public-search").value = "";
         document.getElementById("public-subject").value = "";
         document.getElementById("public-collection").value = "";
@@ -2512,6 +4114,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         notesState.publicPage = 1;
         loadPublicNotes();
     });
+    const activateDiscoverySort = (sort) => {
+        document.getElementById("public-sort").value = sort;
+        notesState.publicPage = 1;
+        loadPublicNotes();
+    };
+    document.getElementById("explore-most-helpful").addEventListener("click", () => activateDiscoverySort("helpful"));
+    document.getElementById("explore-trending").addEventListener("click", () => activateDiscoverySort("trending"));
     document.getElementById("public-sort").addEventListener("change", () => {
         notesState.publicPage = 1;
         loadPublicNotes();
@@ -2551,11 +4160,12 @@ document.addEventListener("DOMContentLoaded", async () => {
             loadPublicNotes();
         }
     });
+    document.getElementById("close-public-contributor").addEventListener("click", backToExplore);
     document.getElementById("close-public-note").addEventListener("click", () => {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("note");
-        window.history.replaceState({}, "", url);
-        loadPublicNotes();
+        exitPublicReaderFocus();
+        activePublicReader = null;
+        ++sourceRenderVersion;
+        backToExplore();
     });
 
     if (isAuthenticated()) {
@@ -2571,19 +4181,28 @@ document.addEventListener("DOMContentLoaded", async () => {
         await loadNotes();
     }
 
-    const sharedNoteId = new URL(window.location.href).searchParams.get("note");
-    if (sharedNoteId) {
+    const sharedParams = new URL(window.location.href).searchParams;
+    const sharedNoteId = sharedParams.get("note");
+    const sharedContributorId = sharedParams.get("contributor");
+    if (sharedNoteId || sharedContributorId) {
         notesState.activeView = "explore";
         document.getElementById("my-notes-view").hidden = true;
         document.getElementById("settings-view").hidden = true;
         document.getElementById("analytics-view").hidden = true;
         document.getElementById("security-view").hidden = true;
         document.getElementById("explore-view").hidden = false;
+        document.getElementById("saved-notes-view").hidden = true;
+        document.getElementById("study-history-view").hidden = true;
+        document.getElementById("study-history-tab").classList.remove("active");
+        document.getElementById("saved-notes-tab").classList.remove("active");
         document.getElementById("my-notes-tab").classList.remove("active");
         document.getElementById("settings-tab").classList.remove("active");
         document.getElementById("analytics-tab").classList.remove("active");
         document.getElementById("security-tab").classList.remove("active");
         document.getElementById("explore-tab").classList.add("active");
-        await openPublicNote(sharedNoteId, false);
+        document.getElementById("my-notes-tab").removeAttribute("aria-current");
+        document.getElementById("explore-tab").setAttribute("aria-current", "page");
+        if (sharedNoteId) await openPublicNote(sharedNoteId, false);
+        else await openPublicContributor(sharedContributorId, false);
     }
 });
