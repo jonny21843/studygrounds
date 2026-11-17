@@ -127,6 +127,26 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  StudyActivityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-study-activity", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: recordKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: recordKey
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
   UserSecurityTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -883,6 +903,59 @@ Resources:
             ApiId: !Ref NotesApi
             Path: /api/public/notes/{noteId}/helpful
             Method: DELETE
+            PayloadFormatVersion: "2.0"
+
+  StudyActivityFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/study/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          STUDY_ACTIVITY_TABLE: !Ref StudyActivityTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StudyActivityTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:Query
+              Resource: !Sub "${NotesTable.Arn}/index/NoteIdIndex"
+      Events:
+        StudyDashboard:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        NoteProgress:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/progress/{noteId}
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+        StartStudySession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/sessions
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        FinishStudySession:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/sessions/{sessionId}
+            Method: PATCH
             PayloadFormatVersion: "2.0"
 
   SavedNotesFunction:
