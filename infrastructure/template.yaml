@@ -918,9 +918,16 @@ Resources:
         Variables:
           NOTES_TABLE: !Ref NotesTable
           STUDY_ACTIVITY_TABLE: !Ref StudyActivityTable
+          SAVED_NOTES_TABLE: !Ref SavedNotesTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref StudyActivityTable
+        # Annotation creation also saves the source note, atomically.
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource: !GetAtt SavedNotesTable.Arn
         - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
         - Statement:

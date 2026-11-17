@@ -13,6 +13,7 @@ notes_table = db.Table(os.environ["NOTES_TABLE"])
 activity_table = db.Table(os.environ["STUDY_ACTIVITY_TABLE"])
 transaction_client = boto3.client("dynamodb")
 ACTIVITY_TABLE_NAME = os.environ["STUDY_ACTIVITY_TABLE"]
+SAVED_NOTES_TABLE_NAME = os.environ["SAVED_NOTES_TABLE"]
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 MAX_SESSIONS = 30
 MAX_PROGRESS = 100
@@ -377,10 +378,46 @@ def create_annotation(user_id, note_id, payload):
     if int(existing.get("Count") or 0) >= MAX_ANNOTATIONS_PER_NOTE or existing.get("LastEvaluatedKey"):
         return response(409, {"error": "You have reached the 100-annotation limit for this note."})
     item["recordKey"] = prefix + item["annotationId"]
-    activity_table.put_item(
-        Item=item,
-        ConditionExpression="attribute_not_exists(userId) AND attribute_not_exists(recordKey)",
-    )
+    # Keep annotation creation and bookmarking all-or-nothing.
+    # Update + if_not_exists preserves any existing saved date and does not
+    # create duplicate bookmarks when the note is already in Saved Notes.
+    bookmark_time = item["createdAt"]
+    bookmark_key = bookmark_time + "#" + note_id
+    annotation_fields = {
+        key: {"S": value} if isinstance(value, str) else value
+        for key, value in item.items()
+        if key not in ("anchor",)
+    }
+    if item.get("anchor"):
+        annotation_fields["anchor"] = {
+            "M": {
+                "target": {"N": str(item["anchor"]["target"])},
+                "start": {"N": str(item["anchor"]["start"])},
+                "end": {"N": str(item["anchor"]["end"])},
+                "quote": {"S": item["anchor"]["quote"]},
+            }
+        }
+    transaction_client.transact_write_items(TransactItems=[
+        {"Put": {
+            "TableName": ACTIVITY_TABLE_NAME,
+            "Item": annotation_fields,
+            "ConditionExpression": "attribute_not_exists(userId) AND attribute_not_exists(recordKey)",
+        }},
+        {"Update": {
+            "TableName": SAVED_NOTES_TABLE_NAME,
+            "Key": {"userId": {"S": user_id}, "noteId": {"S": note_id}},
+            "UpdateExpression": (
+                "SET savedAt = if_not_exists(savedAt, :saved), "
+                "savedKey = if_not_exists(savedKey, :savedKey), "
+                "noteOwnerId = if_not_exists(noteOwnerId, :owner)"
+            ),
+            "ExpressionAttributeValues": {
+                ":saved": {"S": bookmark_time},
+                ":savedKey": {"S": bookmark_key},
+                ":owner": {"S": note["userId"]},
+            },
+        }},
+    ])
     output = {
         "id": item["annotationId"], "fileId": file_id,
         "kind": kind, "text": content, "createdAt": item["createdAt"],
@@ -388,7 +425,7 @@ def create_annotation(user_id, note_id, payload):
     if kind == "highlight":
         output["anchor"] = item["anchor"]
         output["color"] = item["color"]
-    return response(201, {"annotation": output})
+    return response(201, {"annotation": output, "saved": True})
 
 
 def delete_annotation(user_id, note_id, annotation_id):
