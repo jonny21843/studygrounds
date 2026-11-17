@@ -38,7 +38,8 @@ jobs:
           set -euo pipefail
           test "$(aws sts get-caller-identity --query Account --output text)" = "248189942252"
           test "$(aws sts get-caller-identity --query Arn --output text | grep -c 'assumed-role/StudyGroundsDevDeploy/')" -ge 1
-          test "$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "CREATE_COMPLETE" ||           test "$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "UPDATE_COMPLETE"
+          stack_status="$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].StackStatus' --output text)"
+          [[ "$stack_status" == "CREATE_COMPLETE" || "$stack_status" == "UPDATE_COMPLETE" ]]
           test "$(aws cloudformation describe-stack-resource --stack-name notes-app-dev --logical-resource-id NotesApi --region us-east-2 --query 'StackResourceDetail.PhysicalResourceId' --output text)" = "nxa9uz2cv0"
 
       - name: Set up Python 3.12
@@ -76,7 +77,7 @@ jobs:
               CloudFrontOrigin=https://d84l1y8p4kdic.cloudfront.net \
               'AllowedOrigins=http://localhost:8080,https://dev.joinstudygrounds.com'
 
-      - name: Verify production stack and API
+      - name: Verify development stack and API
         shell: bash
         run: |
           set -euo pipefail
