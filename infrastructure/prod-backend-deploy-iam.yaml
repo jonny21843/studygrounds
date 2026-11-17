@@ -110,8 +110,6 @@ Resources:
 
   ExistingProdGithubBackendPolicy:
     Type: AWS::IAM::Policy
-    DependsOn:
-      - ProdBackendExecutionRole
     Properties:
       PolicyName: StudyGroundsProdBackendDeployPolicy
       # AWS::IAM::Policy only adds an inline policy to the existing role.
