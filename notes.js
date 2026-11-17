@@ -3255,6 +3255,181 @@ document.addEventListener("keydown", (event) => {
     }
 });
 
+// Study activity is account-private. The backend verifies current public visibility
+// and returns no old note titles or files if a source has been removed.
+function friendlyStudyDate(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "" : date.toLocaleString(undefined, {dateStyle: "medium", timeStyle: "short"});
+}
+
+async function fetchStudyDashboard() {
+    const response = await authenticatedFetch("/api/study");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to load study history.");
+    return data;
+}
+
+async function loadStudyDashboard() {
+    if (!isAuthenticated()) return;
+    const version = ++notesState.studyLoadVersion;
+    const token = getAccessToken();
+    const status = document.getElementById("study-history-status");
+    status.hidden = false;
+    status.textContent = "Loading study history...";
+    try {
+        const data = await fetchStudyDashboard();
+        if (version !== notesState.studyLoadVersion || token !== getAccessToken()) return;
+        notesState.studyDashboard = data;
+        notesState.studyActiveSession = (data.sessions || []).find(item => item.status === "active") || null;
+        renderStudyDashboard(data);
+        status.hidden = true;
+    } catch (error) {
+        if (version !== notesState.studyLoadVersion || token !== getAccessToken()) return;
+        status.hidden = false;
+        status.textContent = error.message || "Unable to load study history.";
+    }
+}
+
+function renderStudyDashboard(data) {
+    const progressContainer = document.getElementById("study-continue-list");
+    const sessionsContainer = document.getElementById("study-sessions-list");
+    if (!progressContainer || !sessionsContainer) return;
+    progressContainer.replaceChildren();
+    sessionsContainer.replaceChildren();
+
+    const recent = (data.continueStudying || []);
+    const sessions = (data.sessions || []);
+    const openNote = (note) => {
+        setActiveView("explore");
+        openPublicNote(note.noteId, true, note.fileId || null);
+    };
+    for (const note of recent) {
+        const card = document.createElement("article");
+        card.className = "study-history-card";
+        card.innerHTML = note.available
+            ? `<div><h4>${escapeHtml(note.title || "Untitled note")}</h4><p>${escapeHtml(note.subject || "Study material")} · Last opened ${escapeHtml(friendlyStudyDate(note.lastOpenedAt))}</p></div><button type="button" class="button button-secondary">Continue studying</button>`
+            : '<div><h4>Note unavailable</h4><p>This study source is no longer public.</p></div>';
+        if (note.available) card.querySelector("button").addEventListener("click", () => openNote(note));
+        progressContainer.appendChild(card);
+    }
+    if (!recent.length) progressContainer.innerHTML = '<p class="status-text">Open a public note to begin your study history.</p>';
+
+    for (const session of sessions) {
+        const card = document.createElement("article");
+        card.className = "study-history-card";
+        const active = session.status === "active";
+        card.innerHTML = `
+            <div>
+                <h4>${escapeHtml(session.available ? session.title : "Note unavailable")}</h4>
+                <p>${escapeHtml(friendlyStudyDate(session.startedAt))} · ${active ? "In progress" : `${Number(session.minutes || 0)} minute${Number(session.minutes || 0) === 1 ? "" : "s"} studied`}</p>
+            </div>
+            ${active ? '<button type="button" class="button button-secondary" data-finish-study>Finish session</button>' : ""}
+        `;
+        if (active) card.querySelector("[data-finish-study]").addEventListener("click", async (event) => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+                await finishStudySession(session);
+                loadStudyDashboard();
+            } catch (error) {
+                button.disabled = false;
+                showAppNotice(error.message, "error");
+            }
+        });
+        sessionsContainer.appendChild(card);
+    }
+    if (!sessions.length) sessionsContainer.innerHTML = '<p class="status-text">Completed sessions will appear here after you finish studying.</p>';
+}
+
+async function saveStudySource(noteId, fileId) {
+    if (!isAuthenticated() || !fileId) return;
+    try {
+        const response = await authenticatedFetch(`/api/study/progress/${encodeURIComponent(noteId)}`, {
+            method: "PUT",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({fileId})
+        });
+        if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || "Unable to remember source.");
+        }
+    } catch (error) {
+        console.warn("Couldn't save study position:", error);
+    }
+}
+
+function renderStudySessionControls(noteId) {
+    const start = document.getElementById("start-study-session");
+    const finish = document.getElementById("finish-study-session");
+    const status = document.getElementById("study-session-status");
+    if (!start || !finish || !status) return;
+    const active = notesState.studyActiveSession;
+    const isCurrent = active && active.noteId === noteId;
+    start.hidden = Boolean(active);
+    finish.hidden = !isCurrent;
+    status.textContent = isCurrent ? `Started ${friendlyStudyDate(active.startedAt)}`
+        : active ? "Finish your existing session in Study History before starting another." : "Study time is recorded only when you start a session.";
+}
+
+async function startStudySession(noteId) {
+    const button = document.getElementById("start-study-session");
+    if (button) button.disabled = true;
+    try {
+        if (notesState.studyActiveSession) throw new Error("Finish your previous session before starting another.");
+        const response = await authenticatedFetch("/api/study/sessions", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({noteId})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to start session.");
+        notesState.studyActiveSession = data.session;
+        renderStudySessionControls(noteId);
+        showAppNotice("Study session started.", "success");
+    } catch (error) {
+        showAppNotice(error.message, "error");
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function finishStudySession(session) {
+    const response = await authenticatedFetch(`/api/study/sessions/${encodeURIComponent(session.sessionId)}`, {
+        method: "PATCH",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({startedAt: session.startedAt})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Unable to finish session.");
+    if (notesState.studyActiveSession?.sessionId === session.sessionId) notesState.studyActiveSession = null;
+    renderStudySessionControls(session.noteId);
+    showAppNotice(`Study session finished · ${Number(data.session?.minutes || 0)} minutes recorded.`, "success");
+}
+
+async function setupStudySessionForReader(noteId, preferredFileId) {
+    if (!isAuthenticated()) return;
+    const currentToken = getAccessToken();
+    const status = document.getElementById("study-session-status");
+    if (status) status.textContent = "Loading your private study activity...";
+    try {
+        const data = await fetchStudyDashboard();
+        if (getAccessToken() !== currentToken || activePublicReader?.noteId !== noteId) return;
+        notesState.studyDashboard = data;
+        notesState.studyActiveSession = (data.sessions || []).find(s => s.status === "active") || null;
+        renderStudySessionControls(noteId);
+        const remembered = (data.continueStudying || []).find(item => item.noteId === noteId && item.available);
+        const targetFile = preferredFileId || remembered?.fileId;
+        if (targetFile) {
+            const index = activePublicReader.files.findIndex(file => file.fileId === targetFile);
+            if (index >= 0 && index !== activePublicReader.index) displayPublicSource(index);
+        }
+    } catch (error) {
+        if (activePublicReader?.noteId !== noteId) return;
+        if (status) status.textContent = "Study activity unavailable. You can still read this note.";
+    }
+}
+
 // Source navigation keeps one viewer mounted at a time to avoid expensive
 // simultaneous document previews on large notes or mobile devices.
 let activePublicReader = null;
@@ -3266,6 +3441,7 @@ async function displayPublicSource(index, focusHeading = false) {
     const next = Math.max(0, Math.min(reader.files.length - 1, Number(index) || 0));
     if (!reader.files.length) return;
     reader.index = next;
+    saveStudySource(reader.noteId, reader.files[next].fileId);
     const version = ++sourceRenderVersion;
     const container = document.getElementById("source-active-viewer");
     if (!container || container.dataset.readerNote !== reader.noteId) return;
@@ -3308,7 +3484,7 @@ function setupPublicSourceReader(noteId, files) {
     displayPublicSource(0);
 }
 
-async function openPublicNote(noteId, updateUrl = true) {
+async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) {
     ++publicBrowseRequestVersion;
     ++sourceRenderVersion;
     activePublicReader = null;
@@ -3429,6 +3605,13 @@ async function openPublicNote(noteId, updateUrl = true) {
             </section>
 
             <section class="public-sources-section">
+                ${isAuthenticated() ? `
+                    <div class="study-session-bar" role="group" aria-label="Your private study session">
+                        <div><strong>Study session</strong><p id="study-session-status" role="status" aria-live="polite">Loading your private study activity...</p></div>
+                        <button type="button" id="start-study-session" class="button button-secondary" hidden>Start studying</button>
+                        <button type="button" id="finish-study-session" class="button button-primary" hidden>Finish session</button>
+                    </div>
+                ` : ""}
                 <div class="reader-preferences-bar" role="group" aria-label="Reader controls">
                     <button id="reader-focus-toggle" type="button" class="button button-secondary" aria-pressed="false">Focus mode</button>
                     <label for="reader-text-size">Text size
@@ -3489,6 +3672,22 @@ async function openPublicNote(noteId, updateUrl = true) {
         document.getElementById("report-note-cancel")?.addEventListener("click", closeReportNoteModal);
         document.querySelector(".report-note-backdrop")?.addEventListener("click", closeReportNoteModal);
         if (files.length) setupPublicSourceReader(noteId, files);
+        if (isAuthenticated()) {
+            document.getElementById("start-study-session")?.addEventListener("click", () => startStudySession(noteId));
+            document.getElementById("finish-study-session")?.addEventListener("click", async (event) => {
+                const session = notesState.studyActiveSession;
+                if (!session) return;
+                event.currentTarget.disabled = true;
+                try {
+                    await finishStudySession(session);
+                } catch (error) {
+                    showAppNotice(error.message, "error");
+                } finally {
+                    if (event.currentTarget.isConnected) event.currentTarget.disabled = false;
+                }
+            });
+            setupStudySessionForReader(noteId, preferredFileId);
+        }
     } catch (error) {
         detail.hidden = true;
         content.innerHTML = "";
