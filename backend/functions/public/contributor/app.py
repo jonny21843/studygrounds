@@ -56,7 +56,7 @@ def lambda_handler(event, context):
     scan_args = {
         "FilterExpression": Attr("visibility").eq("public"),
         # Keep response small while retrieving only fields needed for the profile.
-        "ProjectionExpression": "userId, noteId, title, subject, #topic, description, publicAuthor, publishedAt, #files, viewCount, helpfulCount, visibility",
+        "ProjectionExpression": "userId, noteId, title, subject, #topic, description, publicAuthor, publishedAt, #files, viewCount, helpfulCount, visibility, moderationHold",
         "ExpressionAttributeNames": {"#files": "files", "#topic": "collection"},
     }
 
@@ -64,7 +64,8 @@ def lambda_handler(event, context):
         result = table.scan(**scan_args)
         for note in result.get("Items", []):
             owner = note.get("userId")
-            if not owner or contributor_id(owner) != target or not safe_files(note) or note.get("moderationHold"):
+            if (not owner or contributor_id(owner) != target or note.get("visibility") != "public"
+                    or not safe_files(note) or note.get("moderationHold")):
                 continue
             matching.append(note)
         if not result.get("LastEvaluatedKey"):

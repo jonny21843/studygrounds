@@ -29,7 +29,7 @@ class StudyActivityTests(unittest.TestCase):
         self.client = MagicMock()
         fake_resource = MagicMock()
         fake_resource.Table.side_effect = lambda name: self.notes if name == "notes" else self.activity
-        with patch.dict(os.environ, {"NOTES_TABLE": "notes", "STUDY_ACTIVITY_TABLE": "activity"}):
+        with patch.dict(os.environ, {"NOTES_TABLE": "notes", "STUDY_ACTIVITY_TABLE": "activity", "SAVED_NOTES_TABLE": "saved"}):
             with patch.object(boto3, "resource", return_value=fake_resource):
                 with patch.object(boto3, "client", return_value=self.client):
                     spec = importlib.util.spec_from_file_location(
