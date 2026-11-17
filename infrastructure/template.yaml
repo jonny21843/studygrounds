@@ -274,8 +274,7 @@ Resources:
 
   GuardDutyMalwareProtectionPlan:
     Type: AWS::GuardDuty::MalwareProtectionPlan
-    DependsOn:
-      - GuardDutyMalwareScanRole
+    # Role GetAtt already creates the dependency; explicit DependsOn is redundant.
     Properties:
       Role: !GetAtt GuardDutyMalwareScanRole.Arn
       ProtectedResource:
