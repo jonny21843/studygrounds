@@ -1,0 +1,53 @@
+name: Audit StudyGrounds AWS backend (read only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Environment to audit; no AWS writes"
+        required: true
+        type: choice
+        options: [development, production]
+      stack_name:
+        description: "Existing CloudFormation backend stack name (from AWS Console)"
+        required: true
+        type: string
+      expected_account_id:
+        description: "Expected AWS account ID"
+        required: true
+        default: "248189942252"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  audit:
+    name: Read-only stack inventory and IAM review
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install boto3
+      - name: Read existing CloudFormation and IAM state only
+        env:
+          STUDY_TARGET: ${{ inputs.target }}
+          STUDY_STACK: ${{ inputs.stack_name }}
+          STUDY_ACCOUNT: ${{ inputs.expected_account_id }}
+        run: python scripts/audit_aws_backend_readonly.py
+      - name: Keep short-lived readiness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studygrounds-aws-audit-${{ inputs.target }}
+          path: aws-backend-readiness.json
+          if-no-files-found: ignore
+          retention-days: 7
