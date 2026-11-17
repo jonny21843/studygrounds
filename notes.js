@@ -3133,8 +3133,64 @@ async function initializeSaveButton(noteId) {
     });
 }
 
+// Source navigation keeps one viewer mounted at a time to avoid expensive
+// simultaneous document previews on large notes or mobile devices.
+let activePublicReader = null;
+let sourceRenderVersion = 0;
+
+async function displayPublicSource(index, focusHeading = false) {
+    const reader = activePublicReader;
+    if (!reader) return;
+    const next = Math.max(0, Math.min(reader.files.length - 1, Number(index) || 0));
+    if (!reader.files.length) return;
+    reader.index = next;
+    const version = ++sourceRenderVersion;
+    const container = document.getElementById("source-active-viewer");
+    if (!container || container.dataset.readerNote !== reader.noteId) return;
+    const file = reader.files[next];
+    container.innerHTML = renderEmbeddedSource(file, next);
+    const status = document.getElementById("source-position");
+    if (status) status.textContent = `Source ${next + 1} of ${reader.files.length}`;
+    document.getElementById("source-previous").disabled = next === 0;
+    document.getElementById("source-next").disabled = next === reader.files.length - 1;
+    document.querySelectorAll("[data-reader-source]").forEach((button) => {
+        const selected = Number(button.dataset.readerSource) === next;
+        button.classList.toggle("is-selected", selected);
+        button.setAttribute("aria-current", selected ? "true" : "false");
+        button.setAttribute("aria-pressed", String(selected));
+    });
+    if (focusHeading) {
+        container.querySelector(".source-viewer-header h3")?.setAttribute("tabindex", "-1");
+        container.querySelector(".source-viewer-header h3")?.focus({preventScroll: true});
+    }
+    // Existing native document preview loaders only inspect mounted elements.
+    // A file switch invalidates earlier preview responses by detaching the node.
+    await Promise.all([
+        loadNativeExcelPreviews(reader.noteId),
+        loadNativePowerPointPreviews(reader.noteId),
+        loadNativeDocumentPreviews(reader.noteId)
+    ]);
+    if (version !== sourceRenderVersion) return;
+}
+
+function setupPublicSourceReader(noteId, files) {
+    activePublicReader = {noteId, files, index: 0};
+    const container = document.getElementById("source-active-viewer");
+    if (!container) return;
+    container.dataset.readerNote = noteId;
+    document.querySelectorAll("[data-reader-source]").forEach((button) => {
+        button.addEventListener("click", () => displayPublicSource(Number(button.dataset.readerSource), true));
+    });
+    document.getElementById("source-previous")?.addEventListener("click", () => displayPublicSource(activePublicReader.index - 1, true));
+    document.getElementById("source-next")?.addEventListener("click", () => displayPublicSource(activePublicReader.index + 1, true));
+    displayPublicSource(0);
+}
+
 async function openPublicNote(noteId, updateUrl = true) {
     ++publicBrowseRequestVersion;
+    ++sourceRenderVersion;
+    activePublicReader = null;
+    exitPublicReaderFocus();
     document.getElementById("public-contributor-detail").hidden = true;
     const grid = document.getElementById("public-grid");
     const detail = document.getElementById("public-note-detail");
@@ -3162,20 +3218,16 @@ async function openPublicNote(noteId, updateUrl = true) {
 
         const sourceIndex = files.length > 1
             ? `
-                <nav class="public-source-index" aria-label="Source files">
-                    ${files.map((file, index) => {
-                        const sourceId = `source-${escapeHtml(file.fileId || String(index + 1))}`;
-                        return `
-                            <a href="#${sourceId}" class="public-source-index-item">
-                                <span>${index + 1}</span>
-                                <strong>${escapeHtml(file.filename || `Source ${index + 1}`)}</strong>
-                            </a>
-                        `;
-                    }).join("")}
+                <nav class="public-source-index" aria-label="Choose a source file">
+                    ${files.map((file, index) => `
+                        <button type="button" class="public-source-index-item" data-reader-source="${index}" aria-pressed="${index === 0 ? "true" : "false"}">
+                            <span>${index + 1}</span>
+                            <strong>${escapeHtml(file.filename || `Source ${index + 1}`)}</strong>
+                        </button>
+                    `).join("")}
                 </nav>
             `
             : "";
-
         content.innerHTML = `
             <section class="public-note-hero">
                 <div class="public-note-hero-main">
@@ -3260,16 +3312,18 @@ async function openPublicNote(noteId, updateUrl = true) {
                         <p class="eyebrow">Source material</p>
                         <h3>${files.length} source file${files.length === 1 ? "" : "s"}</h3>
                     </div>
-                    ${files.length > 1 ? '<span class="status-text">Jump to a source below</span>' : ""}
+                    ${files.length > 1 ? '<span class="status-text">Select a file below to switch previews</span>' : ""}
                 </div>
 
                 ${sourceIndex}
-
-                <div class="source-viewer-list">
-                    ${files.length
-                        ? files.map((file, index) => renderEmbeddedSource(file, index)).join("")
-                        : '<p class="note-description">No source files are available for this note.</p>'}
-                </div>
+                ${files.length ? `
+                    <div class="reader-source-toolbar" aria-label="Source navigation">
+                        <button id="source-previous" type="button" class="button button-secondary" disabled>← Previous file</button>
+                        <span id="source-position" role="status" aria-live="polite">Source 1 of ${files.length}</span>
+                        <button id="source-next" type="button" class="button button-secondary" ${files.length === 1 ? "disabled" : ""}>Next file →</button>
+                    </div>
+                    <div id="source-active-viewer" class="source-viewer-list"></div>
+                ` : '<p class="note-description">No source files are available for this note.</p>'}
             </section>
 
             <section id="related-public-notes" class="related-public-section" data-note-id="${escapeHtml(note.noteId)}" aria-label="Related study notes" hidden></section>
@@ -3294,11 +3348,7 @@ async function openPublicNote(noteId, updateUrl = true) {
         document.getElementById("report-note-close")?.addEventListener("click", closeReportNoteModal);
         document.getElementById("report-note-cancel")?.addEventListener("click", closeReportNoteModal);
         document.querySelector(".report-note-backdrop")?.addEventListener("click", closeReportNoteModal);
-        await Promise.all([
-            loadNativeExcelPreviews(noteId),
-            loadNativePowerPointPreviews(noteId),
-            loadNativeDocumentPreviews(noteId)
-        ]);
+        if (files.length) setupPublicSourceReader(noteId, files);
     } catch (error) {
         detail.hidden = true;
         content.innerHTML = "";
