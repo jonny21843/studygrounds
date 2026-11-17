@@ -1,36 +1,106 @@
-name: Deploy StudyGrounds DEV frontend
+# Single ordered release pipeline. A push to develop always updates backend
+# first and verifies the public API before publishing frontend assets.
+name: Deploy StudyGrounds DEV (backend then frontend)
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - develop
-    paths:
-      - "index.html"
-      - "study-notes.html"
-      - "robots.txt"
-      - "sitemap.xml"
-      - "styles.css"
-      - "auth.js"
-      - "notes.js"
-      - "tabs.js"
-      - "auth/**"
-      - ".github/workflows/deploy-dev-frontend.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: studygrounds-development-frontend
-  cancel-in-progress: true
+  group: studygrounds-development-release
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy frontend to development
+  deploy-backend:
+    name: Deploy backend and verify DEV API
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     environment: development
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
 
+      - name: Configure development AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Verify AWS account and development stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "248189942252"
+          test "$(aws sts get-caller-identity --query Arn --output text | grep -c 'assumed-role/StudyGroundsDevDeploy/')" -ge 1
+          test "$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "CREATE_COMPLETE" ||           test "$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "UPDATE_COMPLETE"
+          test "$(aws cloudformation describe-stack-resource --stack-name notes-app-dev --logical-resource-id NotesApi --region us-east-2 --query 'StackResourceDetail.PhysicalResourceId' --output text)" = "nxa9uz2cv0"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up AWS SAM
+        uses: aws-actions/setup-sam@v3
+
+      - name: Build backend
+        run: sam build --no-cached --template-file infrastructure/template.yaml
+
+      - name: Deploy existing development backend stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name notes-app-dev \
+            --region us-east-2 \
+            --capabilities CAPABILITY_IAM \
+            --s3-bucket aws-sam-cli-managed-default-samclisourcebucket-z4bksjkichi5 \
+            --s3-prefix "notes-app-dev/releases/${GITHUB_SHA}" \
+            --role-arn arn:aws:iam::248189942252:role/StudyGroundsDevCloudFormationExecutionRole \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              EnvironmentName=dev \
+              SiteUrl=https://dev.joinstudygrounds.com \
+              "EmailSubjectPrefix=[StudyGrounds-DEV]" \
+              CognitoUserPoolId=us-east-2_sZ3qWdfwv \
+              CognitoAppClientId=3t79knetd0pdav5jsso0osfb1e \
+              AdminEmails=jonathan.feagans@outlook.com \
+              CloudFrontOrigin=https://d84l1y8p4kdic.cloudfront.net \
+              'AllowedOrigins=http://localhost:8080,https://dev.joinstudygrounds.com'
+
+      - name: Verify production stack and API
+        shell: bash
+        run: |
+          set -euo pipefail
+          stack_status="$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].StackStatus' --output text)"
+          [[ "$stack_status" == "CREATE_COMPLETE" || "$stack_status" == "UPDATE_COMPLETE" ]]
+          api_url="$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].Outputs[?OutputKey==`ApiBaseUrl`].OutputValue | [0]' --output text)"
+          test "$api_url" = "https://nxa9uz2cv0.execute-api.us-east-2.amazonaws.com"
+          python - <<'PY'
+          import json
+          import urllib.request
+          url = "https://nxa9uz2cv0.execute-api.us-east-2.amazonaws.com/api/public/notes"
+          with urllib.request.urlopen(url, timeout=30) as response:
+              if response.status != 200:
+                  raise RuntimeError(f"Public notes API returned HTTP {response.status}")
+              json.load(response)
+          print("Development public-notes API smoke test passed.")
+          PY
+
+  deploy-frontend:
+    name: Deploy frontend to development
+    if: github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    environment: development
+    needs: deploy-backend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -90,3 +160,4 @@ jobs:
           aws cloudfront create-invalidation \
             --distribution-id E1O78RFI5U6N8S \
             --paths "/*"
+

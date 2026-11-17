@@ -1,69 +1,13 @@
-name: Deploy StudyGrounds DEV backend
-
+# All DEV releases run through deploy-dev-frontend.yml:
+# Backend -> API smoke test -> frontend, in one workflow.
+name: StudyGrounds DEV backend (managed by coordinated release)
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - develop
-    paths:
-      - "backend/**"
-      - "infrastructure/template.yaml"
-      - "samconfig.toml"
-      - ".github/workflows/deploy-dev-backend.yml"
-
 permissions:
   contents: read
-  id-token: write
-
-concurrency:
-  group: studygrounds-development-backend
-  cancel-in-progress: false
-
 jobs:
-  deploy:
-    name: Deploy backend to development
+  explanation:
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
-    environment: development
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
-          aws-region: us-east-2
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up AWS SAM CLI
-        uses: aws-actions/setup-sam@v3
-
-      - name: Build SAM application
-        run: sam build --no-cached --template-file infrastructure/template.yaml
-
-      - name: Deploy DEV backend
-        shell: bash
-        run: |
-          set -euo pipefail
-          sam deploy \
-            --template-file .aws-sam/build/template.yaml \
-            --stack-name notes-app-dev \
-            --region us-east-2 \
-            --capabilities CAPABILITY_IAM \
-            --resolve-s3 \
-            --role-arn arn:aws:iam::248189942252:role/StudyGroundsDevCloudFormationExecutionRole \
-            --no-confirm-changeset \
-            --no-fail-on-empty-changeset \
-            --parameter-overrides \
-              EnvironmentName=dev \
-              SiteUrl=https://dev.joinstudygrounds.com \
-              "EmailSubjectPrefix=[StudyGrounds-DEV]" \
-              CognitoUserPoolId=us-east-2_sZ3qWdfwv \
-              CognitoAppClientId=3t79knetd0pdav5jsso0osfb1e \
-              AdminEmails=jonathan.feagans@outlook.com \
-              'AllowedOrigins=http://localhost:8080,https://dev.joinstudygrounds.com'
+      - run: echo "::notice::Use 'Deploy StudyGrounds DEV (backend then frontend)' to deploy DEV. This legacy workflow makes no changes."
