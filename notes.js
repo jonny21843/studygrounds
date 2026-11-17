@@ -324,7 +324,10 @@ const notesState = {
     selectedSecurityUserId: null,
     notesLoadVersion: 0,
     savedLoadVersion: 0,
-    savedCursor: null
+    savedCursor: null,
+    studyLoadVersion: 0,
+    studyDashboard: null,
+    studyActiveSession: null
 };
 
 function apiUrl(path) {
@@ -490,6 +493,7 @@ function setActiveView(view) {
     document.getElementById("my-notes-view").hidden = view !== "my-notes";
     document.getElementById("explore-view").hidden = view !== "explore";
     document.getElementById("saved-notes-view").hidden = view !== "saved-notes";
+    document.getElementById("study-history-view").hidden = view !== "study-history";
     document.getElementById("settings-view").hidden = view !== "settings";
     document.getElementById("analytics-view").hidden = view !== "analytics";
     document.getElementById("security-view").hidden = view !== "security";
@@ -497,11 +501,12 @@ function setActiveView(view) {
     document.getElementById("my-notes-tab").classList.toggle("active", view === "my-notes");
     document.getElementById("explore-tab").classList.toggle("active", view === "explore");
     document.getElementById("saved-notes-tab").classList.toggle("active", view === "saved-notes");
+    document.getElementById("study-history-tab").classList.toggle("active", view === "study-history");
     document.getElementById("settings-tab").classList.toggle("active", view === "settings");
     document.getElementById("analytics-tab").classList.toggle("active", view === "analytics");
     document.getElementById("security-tab").classList.toggle("active", view === "security");
     document.getElementById("moderation-tab").classList.toggle("active", view === "moderation");
-    ["my-notes", "explore", "saved-notes", "settings", "analytics", "security", "moderation"].forEach((name) => {
+    ["my-notes", "explore", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].forEach((name) => {
         const button = document.getElementById(`${name}-tab`);
         if (name === view) button.setAttribute("aria-current", "page");
         else button.removeAttribute("aria-current");
@@ -511,6 +516,8 @@ function setActiveView(view) {
         loadPublicNotes();
     } else if (view === "saved-notes") {
         loadSavedNotes();
+    } else if (view === "study-history") {
+        loadStudyDashboard();
     } else if (view === "analytics") {
         loadAdminAnalytics();
     } else if (view === "security") {
@@ -530,6 +537,11 @@ function isConfiguredAdmin() {
 function expireLocalSession() {
     ++notesState.notesLoadVersion;
     ++notesState.savedLoadVersion;
+    ++notesState.studyLoadVersion;
+    notesState.studyDashboard = null;
+    notesState.studyActiveSession = null;
+    document.getElementById("study-continue-list")?.replaceChildren();
+    document.getElementById("study-sessions-list")?.replaceChildren();
     notesState.savedCursor = null;
     document.getElementById("saved-notes-grid")?.replaceChildren();
     clearTokens();
@@ -552,6 +564,7 @@ function renderSignedInState() {
     const notesApp = document.getElementById("notes-app");
     const myNotesTab = document.getElementById("my-notes-tab");
     const savedTab = document.getElementById("saved-notes-tab");
+    const studyTab = document.getElementById("study-history-tab");
     const settingsTab = document.getElementById("settings-tab");
     const analyticsTab = document.getElementById("analytics-tab");
     const securityTab = document.getElementById("security-tab");
@@ -561,12 +574,13 @@ function renderSignedInState() {
     notesApp.hidden = !signedIn;
     myNotesTab.hidden = !signedIn;
     savedTab.hidden = !signedIn;
+    studyTab.hidden = !signedIn;
     settingsTab.hidden = !signedIn;
     analyticsTab.hidden = !signedIn || !isConfiguredAdmin();
     securityTab.hidden = !signedIn || !isConfiguredAdmin();
     moderationTab.hidden = !signedIn || !isConfiguredAdmin();
 
-    if (!signedIn && ["my-notes", "saved-notes", "settings", "analytics", "security", "moderation"].includes(notesState.activeView)) {
+    if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].includes(notesState.activeView)) {
         setActiveView("explore");
     }
 }
@@ -3492,6 +3506,7 @@ window.addEventListener("focus", () => {
     }
     if (notesState.activeView === "my-notes") loadNotes();
     if (notesState.activeView === "saved-notes") loadSavedNotes();
+    if (notesState.activeView === "study-history") loadStudyDashboard();
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -3501,6 +3516,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("hero-sign-in-btn").addEventListener("click", signIn);
     document.getElementById("my-notes-tab").addEventListener("click", () => setActiveView("my-notes"));
     document.getElementById("saved-notes-tab").addEventListener("click", () => setActiveView("saved-notes"));
+    document.getElementById("study-history-tab").addEventListener("click", () => setActiveView("study-history"));
+    document.getElementById("study-history-refresh").addEventListener("click", () => loadStudyDashboard());
     document.getElementById("saved-notes-more").addEventListener("click", () => {
         if (notesState.savedCursor) loadSavedNotes(true);
     });
@@ -3651,6 +3668,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("security-view").hidden = true;
         document.getElementById("explore-view").hidden = false;
         document.getElementById("saved-notes-view").hidden = true;
+        document.getElementById("study-history-view").hidden = true;
+        document.getElementById("study-history-tab").classList.remove("active");
         document.getElementById("saved-notes-tab").classList.remove("active");
         document.getElementById("my-notes-tab").classList.remove("active");
         document.getElementById("settings-tab").classList.remove("active");

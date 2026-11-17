@@ -45,6 +45,7 @@
             <button id="my-notes-tab" class="nav-button active" type="button" aria-current="page">My Notes</button>
             <button id="explore-tab" class="nav-button" type="button">Explore</button>
             <button id="saved-notes-tab" class="nav-button" type="button" hidden>Saved Notes</button>
+            <button id="study-history-tab" class="nav-button" type="button" hidden>Study History</button>
             <button id="settings-tab" class="nav-button" type="button" hidden>Settings</button>
             <button id="analytics-tab" class="nav-button" type="button" hidden>Analytics</button>
             <button id="security-tab" class="nav-button" type="button" hidden>Security</button>
@@ -176,6 +177,28 @@
             <div id="saved-notes-grid" class="saved-notes-grid"></div>
             <div class="saved-more-row">
                 <button id="saved-notes-more" type="button" class="button button-secondary" hidden>Load more saved notes</button>
+            </div>
+        </section>
+
+        <section id="study-history-view" hidden aria-label="Your study history">
+            <div class="dashboard-toolbar">
+                <div>
+                    <p class="eyebrow">Your private study activity</p>
+                    <h2>Study History</h2>
+                    <p class="subtitle">Pick up a saved source or review your completed study sessions. Only your account can access this history.</p>
+                </div>
+                <button id="study-history-refresh" class="button button-secondary" type="button">Refresh</button>
+            </div>
+            <section id="study-history-status" class="status-card" role="status" aria-live="polite">Loading study history...</section>
+            <div id="study-history-content">
+                <section class="study-history-section">
+                    <h3>Continue studying</h3>
+                    <div id="study-continue-list" class="study-history-cards"></div>
+                </section>
+                <section class="study-history-section">
+                    <h3>Recent sessions</h3>
+                    <div id="study-sessions-list" class="study-history-cards"></div>
+                </section>
             </div>
         </section>
 
