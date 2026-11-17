@@ -3302,7 +3302,7 @@ function renderStudyDashboard(data) {
     const sessions = (data.sessions || []);
     const openNote = async (note) => {
         await setActiveView("explore");
-        openPublicNote(note.noteId, true, note.fileId || null);
+        if (notesState.activeView === "explore") openPublicNote(note.noteId, true, note.fileId || null);
     };
     for (const note of recent) {
         const card = document.createElement("article");
@@ -3425,6 +3425,8 @@ async function setupStudySessionForReader(noteId, preferredFileId) {
         notesState.studyActiveSession = (data.sessions || []).find(s => s.status === "active") || null;
         renderStudySessionControls(noteId);
         const remembered = (data.continueStudying || []).find(item => item.noteId === noteId && item.available);
+        // An explicit file switch made while this request was in flight wins.
+        if (activePublicReader.manualSelection) return;
         const targetFile = preferredFileId || remembered?.fileId;
         const index = targetFile ? activePublicReader.files.findIndex(file => file.fileId === targetFile) : -1;
         if (index >= 0) {
@@ -3450,7 +3452,10 @@ async function displayPublicSource(index, focusHeading = false, savePosition = t
     const next = Math.max(0, Math.min(reader.files.length - 1, Number(index) || 0));
     if (!reader.files.length) return;
     reader.index = next;
-    if (savePosition) saveStudySource(reader.noteId, reader.files[next].fileId);
+    if (savePosition) {
+        reader.manualSelection = true;
+        saveStudySource(reader.noteId, reader.files[next].fileId);
+    }
     const version = ++sourceRenderVersion;
     const container = document.getElementById("source-active-viewer");
     if (!container || container.dataset.readerNote !== reader.noteId) return;
@@ -3481,7 +3486,7 @@ async function displayPublicSource(index, focusHeading = false, savePosition = t
 }
 
 function setupPublicSourceReader(noteId, files) {
-    activePublicReader = {noteId, files, index: 0};
+    activePublicReader = {noteId, files, index: 0, manualSelection: false};
     const container = document.getElementById("source-active-viewer");
     if (!container) return;
     container.dataset.readerNote = noteId;
