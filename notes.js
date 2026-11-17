@@ -513,7 +513,7 @@ function setActiveView(view) {
     });
 
     if (view === "explore") {
-        loadPublicNotes();
+        return loadPublicNotes();
     } else if (view === "saved-notes") {
         loadSavedNotes();
     } else if (view === "study-history") {
@@ -3300,8 +3300,8 @@ function renderStudyDashboard(data) {
 
     const recent = (data.continueStudying || []);
     const sessions = (data.sessions || []);
-    const openNote = (note) => {
-        setActiveView("explore");
+    const openNote = async (note) => {
+        await setActiveView("explore");
         openPublicNote(note.noteId, true, note.fileId || null);
     };
     for (const note of recent) {
@@ -3422,7 +3422,7 @@ async function setupStudySessionForReader(noteId, preferredFileId) {
         const targetFile = preferredFileId || remembered?.fileId;
         if (targetFile) {
             const index = activePublicReader.files.findIndex(file => file.fileId === targetFile);
-            if (index >= 0 && index !== activePublicReader.index) displayPublicSource(index);
+            if (index >= 0 && index !== activePublicReader.index) displayPublicSource(index, false, false);
         }
     } catch (error) {
         if (activePublicReader?.noteId !== noteId) return;
@@ -3435,13 +3435,13 @@ async function setupStudySessionForReader(noteId, preferredFileId) {
 let activePublicReader = null;
 let sourceRenderVersion = 0;
 
-async function displayPublicSource(index, focusHeading = false) {
+async function displayPublicSource(index, focusHeading = false, savePosition = true) {
     const reader = activePublicReader;
     if (!reader) return;
     const next = Math.max(0, Math.min(reader.files.length - 1, Number(index) || 0));
     if (!reader.files.length) return;
     reader.index = next;
-    saveStudySource(reader.noteId, reader.files[next].fileId);
+    if (savePosition) saveStudySource(reader.noteId, reader.files[next].fileId);
     const version = ++sourceRenderVersion;
     const container = document.getElementById("source-active-viewer");
     if (!container || container.dataset.readerNote !== reader.noteId) return;
@@ -3481,7 +3481,8 @@ function setupPublicSourceReader(noteId, files) {
     });
     document.getElementById("source-previous")?.addEventListener("click", () => displayPublicSource(activePublicReader.index - 1, true));
     document.getElementById("source-next")?.addEventListener("click", () => displayPublicSource(activePublicReader.index + 1, true));
-    displayPublicSource(0);
+    // Do not overwrite a previous resume position before it has loaded.
+    displayPublicSource(0, false, false);
 }
 
 async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) {
