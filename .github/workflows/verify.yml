@@ -1,0 +1,75 @@
+name: Verify StudyGrounds changes
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop]
+    paths:
+      - "backend/**"
+      - "infrastructure/**"
+      - "tests/**"
+      - "index.html"
+      - "auth.js"
+      - "notes.js"
+      - "tabs.js"
+      - "styles.css"
+      - "auth/**"
+      - ".github/workflows/verify.yml"
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studygrounds-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Python tests, JS syntax, SAM validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install boto3
+
+      - name: Python compilation
+        run: python -m compileall -q backend tests
+
+      - name: Python regression tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check auth.js
+          node --check notes.js
+          node --check tabs.js
+          for script in auth/*.js; do
+            if [[ -f "$script" ]]; then
+              node --check "$script"
+            fi
+          done
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v3
+
+      - name: Validate backend infrastructure template
+        run: sam validate --template-file infrastructure/template.yaml --lint
+
+      - name: Build backend with production-compatible packaging
+        run: sam build --no-cached --template-file infrastructure/template.yaml
