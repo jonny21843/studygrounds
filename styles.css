@@ -3090,3 +3090,18 @@ body.public-reader-focus .source-pdf-frame { height: calc(100vh - 190px); min-he
 @media (prefers-reduced-motion: reduce) {
     .public-source-index { scroll-behavior: auto; }
 }
+
+/* Select a slide in extracted PowerPoint previews without rebuilding the deck. */
+.ppt-slide-jump {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e4e7ec;
+    background: #f8faff;
+}
+.ppt-slide-jump label { font-size: 0.85rem; font-weight: 700; color: #344054; }
+.ppt-slide-jump select { min-width: 130px; max-width: 100%; padding: 9px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; }
+.ppt-slide-jump select:focus-visible { outline: 3px solid #3449c5; outline-offset: 3px; }
+.ppt-slide-card { scroll-margin-top: 22px; }
