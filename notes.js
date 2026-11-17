@@ -1427,6 +1427,16 @@ function setNotesStatus(message, isError = false) {
     status.style.color = isError ? "#b42318" : "";
 }
 
+function clearCompletedScanUploadFeedback(notes) {
+    for (const note of notes || []) {
+        const feedback = notesState.uploadFeedback[note.noteId];
+        if (!feedback || !/^(Uploaded|Replaced)\. Security scan in progress/.test(feedback.message || "")) continue;
+        const pending = Boolean(note.publishPending) ||
+            (note.files || []).some((file) => (file.malwareScanStatus || "").toUpperCase() === "PENDING");
+        if (!pending) delete notesState.uploadFeedback[note.noteId];
+    }
+}
+
 async function loadNotes() {
     const requestVersion = ++notesState.notesLoadVersion;
     if (!isAuthenticated()) {
@@ -1455,6 +1465,7 @@ async function loadNotes() {
             renderSearchSelectOptions(container, false);
         });
         notifyScanStateChanges(notesState.notes);
+        clearCompletedScanUploadFeedback(notesState.notes);
         renderNotes();
 
         if (notesState.scanRefreshTimer) {
