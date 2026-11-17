@@ -3133,6 +3133,70 @@ async function initializeSaveButton(noteId) {
     });
 }
 
+// Reading preferences are local to the current browser, never shared with note authors.
+const READER_PREFERENCES_KEY = "studygrounds.reader.preferences.v1";
+function getReaderPreferences() {
+    try {
+        const stored = JSON.parse(window.localStorage.getItem(READER_PREFERENCES_KEY) || "{}");
+        return {
+            size: ["normal", "large", "extra"].includes(stored.size) ? stored.size : "normal",
+            width: stored.width === "comfortable" ? "comfortable" : "wide"
+        };
+    } catch {
+        return {size: "normal", width: "wide"};
+    }
+}
+function applyReaderPreferences() {
+    const prefs = getReaderPreferences();
+    const panel = document.getElementById("public-note-detail");
+    panel.dataset.readerSize = prefs.size;
+    panel.dataset.readerWidth = prefs.width;
+    const size = document.getElementById("reader-text-size");
+    const width = document.getElementById("reader-width");
+    if (size) size.value = prefs.size;
+    if (width) width.value = prefs.width;
+}
+function updateReaderPreference(name, value) {
+    const prefs = getReaderPreferences();
+    prefs[name] = value;
+    try { window.localStorage.setItem(READER_PREFERENCES_KEY, JSON.stringify(prefs)); } catch {}
+    applyReaderPreferences();
+}
+function exitPublicReaderFocus() {
+    document.body.classList.remove("public-reader-focus");
+    const button = document.getElementById("reader-focus-toggle");
+    if (button) {
+        button.textContent = "Focus mode";
+        button.setAttribute("aria-pressed", "false");
+    }
+}
+function togglePublicReaderFocus() {
+    const enabled = document.body.classList.toggle("public-reader-focus");
+    const button = document.getElementById("reader-focus-toggle");
+    if (button) {
+        button.textContent = enabled ? "Exit focus" : "Focus mode";
+        button.setAttribute("aria-pressed", String(enabled));
+    }
+    if (enabled) document.getElementById("reader-source-toolbar")?.scrollIntoView({block: "start"});
+    else button?.focus({preventScroll: true});
+}
+function setupPublicReaderControls() {
+    applyReaderPreferences();
+    document.getElementById("reader-focus-toggle")?.addEventListener("click", togglePublicReaderFocus);
+    document.getElementById("reader-text-size")?.addEventListener("change", (event) => {
+        updateReaderPreference("size", event.target.value);
+    });
+    document.getElementById("reader-width")?.addEventListener("change", (event) => {
+        updateReaderPreference("width", event.target.value);
+    });
+}
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && document.body.classList.contains("public-reader-focus")) {
+        exitPublicReaderFocus();
+        document.getElementById("reader-focus-toggle")?.focus({preventScroll: true});
+    }
+});
+
 // Source navigation keeps one viewer mounted at a time to avoid expensive
 // simultaneous document previews on large notes or mobile devices.
 let activePublicReader = null;
@@ -3307,6 +3371,23 @@ async function openPublicNote(noteId, updateUrl = true) {
             </section>
 
             <section class="public-sources-section">
+                <div class="reader-preferences-bar" role="group" aria-label="Reader controls">
+                    <button id="reader-focus-toggle" type="button" class="button button-secondary" aria-pressed="false">Focus mode</button>
+                    <label for="reader-text-size">Text size
+                        <select id="reader-text-size" aria-label="Preview text size">
+                            <option value="normal">Normal</option>
+                            <option value="large">Large</option>
+                            <option value="extra">Extra large</option>
+                        </select>
+                    </label>
+                    <label for="reader-width">Reading width
+                        <select id="reader-width" aria-label="Reading width">
+                            <option value="wide">Wide</option>
+                            <option value="comfortable">Comfortable</option>
+                        </select>
+                    </label>
+                </div>
+                <p class="reader-preferences-hint">Text size changes StudyGrounds document previews. PDF zoom and page controls remain in your browser's PDF viewer.</p>
                 <div class="public-sources-heading">
                     <div>
                         <p class="eyebrow">Source material</p>
@@ -3333,6 +3414,7 @@ async function openPublicNote(noteId, updateUrl = true) {
         document.querySelector(".explore-controls")?.setAttribute("hidden", "");
         document.getElementById("public-status").hidden = true;
         detail.hidden = false;
+        setupPublicReaderControls();
         initializeSaveButton(note.noteId);
         initializeHelpfulButton(note);
         loadRelatedPublicNotes(note);
@@ -3494,7 +3576,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
     document.getElementById("close-public-contributor").addEventListener("click", backToExplore);
-    document.getElementById("close-public-note").addEventListener("click", backToExplore);
+    document.getElementById("close-public-note").addEventListener("click", () => {
+        exitPublicReaderFocus();
+        activePublicReader = null;
+        ++sourceRenderVersion;
+        backToExplore();
+    });
 
     if (isAuthenticated()) {
         try {
