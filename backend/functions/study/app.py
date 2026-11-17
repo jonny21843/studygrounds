@@ -351,7 +351,7 @@ def create_annotation(user_id, note_id, payload):
             type(target) is not int or target < 0 or target > 10000
             or type(start) is not int or type(end) is not int
             or start < 0 or end <= start or end > 20000
-            or not isinstance(quote, str) or len(quote.encode("utf-16-le")) // 2 != end - start
+            or not isinstance(quote, str) or len(quote.encode("utf-16-le", errors="surrogatepass")) // 2 != end - start
             or not quote.strip() or len(quote) > 500
         ):
             return response(400, {"error": "Invalid highlight selection."})

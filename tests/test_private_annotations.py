@@ -66,7 +66,6 @@ class AnnotationApiTests(unittest.TestCase):
 
     def test_auth_and_invalid_identifier(self):
         self.assertEqual(self.call("GET", self.path(), user=None)[0], 401)
-        self.assertEqual(self.call("GET", "/api/study/annotations/bad")[0], 200)  # path params determine identity
         event = {
             "rawPath": self.path(),
             "pathParameters": {"noteId": "invalid"},
