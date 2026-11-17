@@ -485,6 +485,7 @@ async function saveSettingsProfile(event) {
 }
 
 function setActiveView(view) {
+    if (view !== "explore") exitPublicReaderFocus();
     notesState.activeView = view;
     document.getElementById("my-notes-view").hidden = view !== "my-notes";
     document.getElementById("explore-view").hidden = view !== "explore";
@@ -1062,14 +1063,20 @@ function renderPresentationSlides(preview) {
             <strong>${slides.length} slide${slides.length === 1 ? "" : "s"} previewed</strong>
             ${preview.truncated ? '<span>Preview limited to the first 60 slides.</span>' : ""}
         </div>
+        <div class="ppt-slide-jump">
+            <label for="ppt-slide-select">Jump to slide</label>
+            <select id="ppt-slide-select" aria-label="Jump to slide">
+                ${slides.map((slide, index) => `<option value="${index}">Slide ${Number(slide.number || index + 1)}</option>`).join("")}
+            </select>
+        </div>
         <div class="ppt-slide-list">
-            ${slides.map((slide) => {
+            ${slides.map((slide, index) => {
                 const body = (slide.text || [])
                     .map((line) => `<li>${escapeHtml(line)}</li>`)
                     .join("");
 
                 return `
-                    <article class="ppt-slide-card">
+                    <article class="ppt-slide-card" data-slide-index="${index}">
                         <div class="ppt-slide-number">Slide ${Number(slide.number || 0)}</div>
                         <div class="ppt-slide-content">
                             <h4>${escapeHtml(slide.title || `Slide ${slide.number}`)}</h4>
@@ -1175,7 +1182,12 @@ async function loadNativePowerPointPreviews(noteId) {
             const data = await response.json();
             if (!response.ok) throw new Error(data.error || "Unable to preview presentation.");
 
+            if (!container.isConnected) continue;
             container.innerHTML = renderPresentationSlides(data.preview || {});
+            container.querySelector("#ppt-slide-select")?.addEventListener("change", (event) => {
+                const selected = container.querySelectorAll("[data-slide-index]")[Number(event.target.value)];
+                selected?.scrollIntoView({behavior: "auto", block: "start"});
+            });
         } catch (error) {
             container.innerHTML = `
                 <p class="ppt-preview-error">
@@ -2229,6 +2241,9 @@ function rememberExplorePosition() {
 }
 
 async function backToExplore() {
+    exitPublicReaderFocus();
+    activePublicReader = null;
+    ++sourceRenderVersion;
     const url = new URL(window.location.href);
     url.searchParams.delete("note");
     url.searchParams.delete("contributor");
@@ -2459,6 +2474,9 @@ function contributorShareUrl(contributorId) {
 
 async function openPublicContributor(contributorId, updateUrl = true, requestedPage = 1) {
     if (!/^[0-9a-f]{64}$/.test(String(contributorId || ""))) return;
+    exitPublicReaderFocus();
+    activePublicReader = null;
+    ++sourceRenderVersion;
     const version = ++publicBrowseRequestVersion;
     const panel = document.getElementById("public-contributor-detail");
     const content = document.getElementById("public-contributor-content");
@@ -2807,6 +2825,9 @@ let publicBrowseRequestVersion = 0;
 
 // Navigate from a note into the existing subject/topic filters without extra endpoints.
 function browsePublicTaxonomy(subject, topic = "") {
+    exitPublicReaderFocus();
+    activePublicReader = null;
+    ++sourceRenderVersion;
     const subjectSelect = document.getElementById("public-subject");
     const topicSelect = document.getElementById("public-collection");
     if (!subjectSelect || !topicSelect) return;
