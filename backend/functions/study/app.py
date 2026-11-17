@@ -304,7 +304,15 @@ def list_annotations(user_id, note_id):
             "createdAt": item.get("createdAt"),
         }
         if item.get("kind") == "highlight":
-            record["anchor"] = item.get("anchor")
+            anchor = item.get("anchor") or {}
+            # boto3 deserializes DynamoDB numbers into Decimal, which standard
+            # json.dumps cannot serialize without explicit conversion.
+            record["anchor"] = {
+                "target": int(anchor.get("target") or 0),
+                "start": int(anchor.get("start") or 0),
+                "end": int(anchor.get("end") or 0),
+                "quote": anchor.get("quote") or "",
+            }
             record["color"] = item.get("color") or "yellow"
         output.append(record)
     output.sort(key=lambda item: item.get("createdAt") or "", reverse=True)

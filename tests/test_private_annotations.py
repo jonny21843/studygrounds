@@ -5,6 +5,7 @@ Requires boto3; does not call AWS.
 """
 import importlib.util
 import json
+from decimal import Decimal
 import os
 from pathlib import Path
 import unittest
@@ -149,6 +150,24 @@ class AnnotationApiTests(unittest.TestCase):
         self.assertNotIn("Should not appear", json.dumps(result))
         self.assertIn("My private exam comment", json.dumps(result))
         self.assertTrue(self.activity.query.call_args.kwargs["ConsistentRead"])
+
+    def test_dynamodb_decimal_offsets_serialize_to_json(self):
+        self.activity.query.return_value = {"Items": [{
+            "annotationId": ANNOTATION_ID,
+            "fileId": "doc-source",
+            "kind": "highlight",
+            "text": "",
+            "anchor": {
+                "target": Decimal("3"), "start": Decimal("2"),
+                "end": Decimal("7"), "quote": "hello"
+            },
+            "color": "pink",
+            "createdAt": "2026-11-17"
+        }]}
+        code, result = self.call("GET", self.path())
+        self.assertEqual(code, 200)
+        self.assertEqual(result["annotations"][0]["anchor"]["target"], 3)
+        self.assertEqual(result["annotations"][0]["anchor"]["end"], 7)
 
     def test_deletion_is_scoped_and_possible_after_unpublish(self):
         self.notes.get_item.return_value = {"Item": dict(self.note, visibility="private")}
