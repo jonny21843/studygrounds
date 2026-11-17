@@ -33,11 +33,15 @@ class AnnotationApiTests(unittest.TestCase):
         }
         self.notes = MagicMock()
         self.activity = MagicMock()
+        self.client = MagicMock()
         fake_db = MagicMock()
         fake_db.Table.side_effect = lambda name: self.notes if name == "notes" else self.activity
-        with patch.dict(os.environ, {"NOTES_TABLE": "notes", "STUDY_ACTIVITY_TABLE": "activity"}):
+        with patch.dict(os.environ, {
+            "NOTES_TABLE": "notes", "STUDY_ACTIVITY_TABLE": "activity",
+            "SAVED_NOTES_TABLE": "saved",
+        }):
             with patch.object(boto3, "resource", return_value=fake_db):
-                with patch.object(boto3, "client", return_value=MagicMock()):
+                with patch.object(boto3, "client", return_value=self.client):
                     spec = importlib.util.spec_from_file_location(
                         "study_annotation_test", ROOT / "backend/functions/study/app.py"
                     )
@@ -80,12 +84,25 @@ class AnnotationApiTests(unittest.TestCase):
         }, user="alice")
         self.assertEqual(code, 201)
         self.assertEqual(result["annotation"]["kind"], "note")
-        item = self.activity.put_item.call_args.kwargs["Item"]
-        self.assertEqual(item["userId"], "alice")
-        self.assertTrue(item["recordKey"].startswith("ANNOTATION#" + NOTE_ID + "#"))
-        self.assertEqual(item["fileId"], "pdf-source")
+        txn = self.client.transact_write_items.call_args.kwargs["TransactItems"]
+        self.assertEqual(len(txn), 2)
+        item = txn[0]["Put"]["Item"]
+        self.assertEqual(txn[0]["Put"]["TableName"], "activity")
+        self.assertEqual(item["userId"], {"S": "alice"})
+        self.assertTrue(item["recordKey"]["S"].startswith("ANNOTATION#" + NOTE_ID + "#"))
+        self.assertEqual(item["fileId"], {"S": "pdf-source"})
         self.assertNotIn("noteOwnerId", item)
         self.assertNotIn("files", item)
+        bookmark = txn[1]["Update"]
+        self.assertEqual(bookmark["TableName"], "saved")
+        self.assertEqual(bookmark["Key"], {
+            "userId": {"S": "alice"}, "noteId": {"S": NOTE_ID}
+        })
+        self.assertEqual(bookmark["ExpressionAttributeValues"][":owner"], {"S": "original-author"})
+        self.assertIn("if_not_exists(savedAt", bookmark["UpdateExpression"])
+        self.assertIn("if_not_exists(savedKey", bookmark["UpdateExpression"])
+        self.assertTrue(result["saved"])
+        self.activity.put_item.assert_not_called()
 
     def test_create_highlight_validates_anchor_and_format(self):
         anchor = {"target": 3, "start": 2, "end": 7, "quote": "hello"}
@@ -96,6 +113,9 @@ class AnnotationApiTests(unittest.TestCase):
         self.assertEqual(code, 201)
         self.assertEqual(result["annotation"]["anchor"], anchor)
         self.assertEqual(result["annotation"]["color"], "green")
+        txn = self.client.transact_write_items.call_args.kwargs["TransactItems"]
+        self.assertEqual(txn[0]["Put"]["Item"]["anchor"]["M"]["quote"], {"S": "hello"})
+        self.assertEqual(txn[1]["Update"]["Key"]["noteId"], {"S": NOTE_ID})
         code, _ = self.call("POST", self.path(), {
             "kind": "highlight", "fileId": "pdf-source", "text": "", "anchor": anchor
         })
@@ -177,6 +197,22 @@ class AnnotationApiTests(unittest.TestCase):
             "userId": "alice", "recordKey": f"ANNOTATION#{NOTE_ID}#{ANNOTATION_ID}"
         })
         self.notes.get_item.assert_not_called()
+        self.client.transact_write_items.assert_not_called()
+
+    def test_transaction_failure_does_not_report_annotation_saved(self):
+        self.client.transact_write_items.side_effect = RuntimeError("DynamoDB rejected transaction")
+        with self.assertRaisesRegex(RuntimeError, "DynamoDB rejected transaction"):
+            self.call("POST", self.path(), {
+                "kind": "note", "fileId": "doc-source", "text": "review later"
+            })
+        self.activity.put_item.assert_not_called()
+
+    def test_invalid_annotation_never_bookmarks(self):
+        for text in ("", " " * 3, "x" * 1001):
+            self.assertEqual(self.call("POST", self.path(), {
+                "kind": "note", "fileId": "doc-source", "text": text
+            })[0], 400)
+        self.client.transact_write_items.assert_not_called()
 
     def test_maximum_annotations_enforced(self):
         self.activity.query.return_value = {"Count": 100, "Items": []}
@@ -184,7 +220,7 @@ class AnnotationApiTests(unittest.TestCase):
             "kind": "note", "fileId": "doc-source", "text": "One more"
         })
         self.assertEqual(code, 409)
-        self.activity.put_item.assert_not_called()
+        self.client.transact_write_items.assert_not_called()
 
     def test_text_validation(self):
         for value in ["", " " * 3, "x" * 1001]:
