@@ -1,0 +1,171 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Bootstrap separate GitHub OIDC and CloudFormation execution roles for
+  EXISTING StudyGrounds production backend. This stack does NOT deploy the app.
+
+Parameters:
+  GitHubOidcSubject:
+    Type: String
+    Default: "repo:jonny21843@166164916/studygrounds@1091118527:environment:production"
+    Description: Exact subject from currently working StudyGrounds PROD OIDC trust.
+  SamArtifactBucketPattern:
+    Type: String
+    Default: "aws-sam-cli-managed-default-samclisourcebucket-*"
+    Description: Existing AWS SAM managed artifact bucket name glob.
+
+Resources:
+  ProdBackendExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: StudyGroundsProdCloudFormationExecutionRole
+      Description: Execute SAM CloudFormation updates for studygrounds-prod only.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StudyGroundsProdCloudFormationExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ProdLambda
+                Effect: Allow
+                Action: "lambda:*"
+                Resource: !Sub "arn:${AWS::Partition}:lambda:us-east-2:${AWS::AccountId}:function:studygrounds-prod-*"
+              - Sid: ProdDynamoDB
+                Effect: Allow
+                Action: "dynamodb:*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:dynamodb:us-east-2:${AWS::AccountId}:table/studygrounds-prod-*"
+                  - !Sub "arn:${AWS::Partition}:dynamodb:us-east-2:${AWS::AccountId}:table/studygrounds-prod-*/index/*"
+              - Sid: ProdUploads
+                Effect: Allow
+                Action: "s3:*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::studygrounds-prod-*"
+                  - !Sub "arn:${AWS::Partition}:s3:::studygrounds-prod-*/*"
+              - Sid: ProdFunctionRoles
+                Effect: Allow
+                Action:
+                  - iam:AttachRolePolicy
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:DeleteRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:GetRole
+                  - iam:GetRolePolicy
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListRolePolicies
+                  - iam:PassRole
+                  - iam:PutRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:UpdateAssumeRolePolicy
+                Resource: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/studygrounds-prod-*"
+              - Sid: ProdApiGateway
+                Effect: Allow
+                Action: "apigateway:*"
+                Resource: "*"
+              - Sid: ProdGuardDuty
+                Effect: Allow
+                Action: "guardduty:*"
+                Resource: "*"
+              - Sid: ServerlessTransform
+                Effect: Allow
+                Action: cloudformation:CreateChangeSet
+                Resource: !Sub "arn:${AWS::Partition}:cloudformation:us-east-2:aws:transform/Serverless-2016-10-31"
+              - Sid: SamArtifactRead
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:s3:::${SamArtifactBucketPattern}"
+                  - !Sub "arn:${AWS::Partition}:s3:::${SamArtifactBucketPattern}/*"
+              - Sid: ProdEventBridge
+                Effect: Allow
+                Action:
+                  - events:DeleteRule
+                  - events:DescribeRule
+                  - events:DisableRule
+                  - events:EnableRule
+                  - events:ListTagsForResource
+                  - events:ListTargetsByRule
+                  - events:PutRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                  - events:TagResource
+                  - events:UntagResource
+                Resource: !Sub "arn:${AWS::Partition}:events:us-east-2:${AWS::AccountId}:rule/studygrounds-prod-*"
+
+  ProdBackendGithubRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: StudyGroundsProdBackendDeploy
+      Description: Production backend-only GitHub OIDC CloudFormation change set deployer.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+                "token.actions.githubusercontent.com:sub": !Ref GitHubOidcSubject
+      Policies:
+        - PolicyName: StudyGroundsProdBackendDeployPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ExistingProductionStackChanges
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation:us-east-2:${AWS::AccountId}:stack/studygrounds-prod/*"
+                  - !Sub "arn:${AWS::Partition}:cloudformation:us-east-2:${AWS::AccountId}:changeSet/*/*"
+              - Sid: DescribeExistingStacks
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ListStackResources
+                Resource: "*"
+              - Sid: SamBucketInventory
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${SamArtifactBucketPattern}"
+              - Sid: SamUploadArtifacts
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${SamArtifactBucketPattern}/*"
+              - Sid: PassOnlyProdExecutionRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt ProdBackendExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    "iam:PassedToService": cloudformation.amazonaws.com
+
+Outputs:
+  BackendGithubRoleArn:
+    Value: !GetAtt ProdBackendGithubRole.Arn
+  CloudFormationExecutionRoleArn:
+    Value: !GetAtt ProdBackendExecutionRole.Arn
