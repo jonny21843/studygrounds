@@ -38,8 +38,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install test dependencies
-        run: python -m pip install boto3
+      - name: Install test and CloudFormation lint dependencies
+        run: python -m pip install boto3 cfn-lint
+
+      - name: Validate production IAM bootstrap CloudFormation template
+        run: cfn-lint infrastructure/prod-backend-deploy-iam.yaml
 
       - name: Python compilation
         run: python -m compileall -q backend tests
