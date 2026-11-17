@@ -3561,13 +3561,14 @@ function renderReaderAnnotations() {
             <button type="button" class="button button-text" aria-label="Remove ${label.toLowerCase()}">Remove</button>`;
         card.querySelector("button").addEventListener("click", async (event) => {
             const button = event.currentTarget;
+            const token = getAccessToken();
             button.disabled = true;
             try {
                 const response = await authenticatedFetch(
                     `/api/study/annotations/${encodeURIComponent(reader.noteId)}/${encodeURIComponent(item.id)}`,
                     {method: "DELETE"});
                 if (!response.ok) throw new Error("Unable to remove annotation.");
-                if (activePublicReader?.noteId !== reader.noteId) return;
+                if (activePublicReader?.noteId !== reader.noteId || token !== getAccessToken()) return;
                 readerAnnotations = readerAnnotations.filter(entry => entry.id !== item.id);
                 readerSelectedExcerpt = null;
                 applyReaderHighlights();
@@ -3613,6 +3614,7 @@ async function loadReaderAnnotations(noteId) {
 async function addReaderAnnotation(kind) {
     const reader = activePublicReader;
     if (!reader || !isAuthenticated()) return;
+    const token = getAccessToken();
     const noteId = reader.noteId, fileId = reader.files[reader.index]?.fileId;
     const textInput = document.getElementById("reader-annotation-text");
     const status = document.getElementById("reader-annotation-status");
@@ -3625,6 +3627,15 @@ async function addReaderAnnotation(kind) {
     if (kind === "highlight" && (!selected || selected.noteId !== noteId || selected.fileId !== fileId)) {
         if (status) status.textContent = "Select text inside this source's extracted preview first.";
         return;
+    }
+    if (kind === "highlight") {
+        const overlap = readerAnnotations.some(item => item.kind === "highlight" &&
+            item.fileId === fileId && item.anchor?.target === selected.anchor.target &&
+            item.anchor.start < selected.anchor.end && selected.anchor.start < item.anchor.end);
+        if (overlap) {
+            if (status) status.textContent = "That text overlaps an existing highlight. Remove the old highlight first.";
+            return;
+        }
     }
     const button = document.getElementById(kind === "note" ? "reader-annotation-submit" : "reader-highlight-submit");
     button.disabled = true;
@@ -3641,7 +3652,7 @@ async function addReaderAnnotation(kind) {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Unable to save annotation.");
-        if (activePublicReader?.noteId !== noteId) return;
+        if (activePublicReader?.noteId !== noteId || token !== getAccessToken()) return;
         readerAnnotations.unshift(data.annotation);
         if (kind === "note") textInput.value = "";
         readerSelectedExcerpt = null;
@@ -3687,6 +3698,7 @@ async function displayPublicSource(index, focusHeading = false, savePosition = t
     if (!container || container.dataset.readerNote !== reader.noteId) return;
     const file = reader.files[next];
     container.innerHTML = renderEmbeddedSource(file, next);
+    renderReaderAnnotations();
     const status = document.getElementById("source-position");
     if (status) status.textContent = `Source ${next + 1} of ${reader.files.length}`;
     document.getElementById("source-previous").disabled = next === 0;
