@@ -11,6 +11,8 @@ from boto3.dynamodb.conditions import Key
 db = boto3.resource("dynamodb")
 notes_table = db.Table(os.environ["NOTES_TABLE"])
 activity_table = db.Table(os.environ["STUDY_ACTIVITY_TABLE"])
+transaction_client = boto3.client("dynamodb")
+ACTIVITY_TABLE_NAME = os.environ["STUDY_ACTIVITY_TABLE"]
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 MAX_SESSIONS = 30
 MAX_PROGRESS = 100
@@ -113,18 +115,37 @@ def start_session(user_id, payload):
         return response(404, {"error": "This note is no longer publicly available."})
     started_at = utc_now().isoformat()
     session_id = str(uuid.uuid4())
-    activity_table.put_item(Item={
-        "userId": user_id, "recordKey": f"SESSION#{started_at}#{session_id}",
-        "sessionId": session_id,
-        "noteId": note_id,
-        "noteOwnerId": note["userId"],
-        "startedAt": started_at,
-        "status": "active",
-    }, ConditionExpression="attribute_not_exists(userId)")
+    session_key = f"SESSION#{started_at}#{session_id}"
+    try:
+        # Reserve the user's one active slot in the same transaction as session creation.
+        transaction_client.transact_write_items(TransactItems=[
+            {"Put": {
+                "TableName": ACTIVITY_TABLE_NAME,
+                "Item": {
+                    "userId": {"S": user_id}, "recordKey": {"S": "ACTIVE"},
+                    "sessionId": {"S": session_id},
+                    "sessionKey": {"S": session_key},
+                },
+                "ConditionExpression": "attribute_not_exists(userId)",
+            }},
+            {"Put": {
+                "TableName": ACTIVITY_TABLE_NAME,
+                "Item": {
+                    "userId": {"S": user_id}, "recordKey": {"S": session_key},
+                    "sessionId": {"S": session_id}, "noteId": {"S": note_id},
+                    "noteOwnerId": {"S": note["userId"]},
+                    "startedAt": {"S": started_at}, "status": {"S": "active"},
+                },
+                "ConditionExpression": "attribute_not_exists(userId)",
+            }},
+        ])
+    except Exception as error:
+        if getattr(error, "response", {}).get("Error", {}).get("Code") == "TransactionCanceledException":
+            return response(409, {"error": "Finish your active study session before starting another."})
+        raise
     return response(201, {"session": {
         "sessionId": session_id, "noteId": note_id, "startedAt": started_at, "status": "active"
     }})
-
 
 def finish_session(user_id, session_id, payload):
     # The session's original key is supplied by the API only after validating it.
@@ -154,18 +175,30 @@ def finish_session(user_id, session_id, payload):
     # Avoid overstating study time when someone leaves a tab open overnight.
     minutes = min(240, int(seconds // 60))
     try:
-        activity_table.update_item(
-            Key=key,
-            UpdateExpression="SET #state = :completed, endedAt = :end, minutes = :minutes",
-            ConditionExpression="#state = :active",
-            ExpressionAttributeNames={"#state": "status"},
-            ExpressionAttributeValues={
-                ":completed": "completed", ":active": "active",
-                ":end": now.isoformat(), ":minutes": minutes,
-            },
-        )
+        transaction_client.transact_write_items(TransactItems=[
+            {"Update": {
+                "TableName": ACTIVITY_TABLE_NAME,
+                "Key": {
+                    "userId": {"S": user_id},
+                    "recordKey": {"S": key["recordKey"]},
+                },
+                "UpdateExpression": "SET #state = :completed, endedAt = :end, minutes = :minutes",
+                "ConditionExpression": "#state = :active",
+                "ExpressionAttributeNames": {"#state": "status"},
+                "ExpressionAttributeValues": {
+                    ":completed": {"S": "completed"}, ":active": {"S": "active"},
+                    ":end": {"S": now.isoformat()}, ":minutes": {"N": str(minutes)},
+                },
+            }},
+            {"Delete": {
+                "TableName": ACTIVITY_TABLE_NAME,
+                "Key": {"userId": {"S": user_id}, "recordKey": {"S": "ACTIVE"}},
+                "ConditionExpression": "sessionId = :session",
+                "ExpressionAttributeValues": {":session": {"S": session_id}},
+            }},
+        ])
     except Exception as error:
-        if getattr(error, "response", {}).get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+        if getattr(error, "response", {}).get("Error", {}).get("Code") == "TransactionCanceledException":
             return response(409, {"error": "Session has already been updated. Refresh study history."})
         raise
     return response(200, {"session": {
@@ -208,6 +241,18 @@ def study_dashboard(user_id):
             "lastOpenedAt": item.get("lastOpenedAt"),
         })
     recent.sort(key=lambda entry: entry.get("lastOpenedAt") or "", reverse=True)
+
+    # Include an old active session even when it falls outside the latest 30.
+    active_marker = activity_table.get_item(
+        Key={"userId": user_id, "recordKey": "ACTIVE"}, ConsistentRead=True
+    ).get("Item")
+    if active_marker and active_marker.get("sessionKey"):
+        active_item = activity_table.get_item(
+            Key={"userId": user_id, "recordKey": active_marker["sessionKey"]},
+            ConsistentRead=True,
+        ).get("Item")
+        if active_item and all(item.get("sessionId") != active_item.get("sessionId") for item in sessions):
+            sessions.insert(0, active_item)
 
     history = []
     for item in sessions:
