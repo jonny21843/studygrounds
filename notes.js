@@ -564,6 +564,7 @@ function renderSignedInState() {
         ++annotationRequestVersion;
         readerAnnotations = [];
         readerSelectedExcerpt = null;
+        readerAnnotationsReady = false;
         document.querySelector(".reader-annotations-panel")?.remove();
         document.querySelectorAll(".reader-private-highlight").forEach(mark => {
             mark.replaceWith(document.createTextNode(mark.textContent || ""));
@@ -3454,6 +3455,7 @@ async function setupStudySessionForReader(noteId, preferredFileId) {
 // extracted-preview text block; never attempt to annotate browser-owned PDF iframes.
 let readerAnnotations = [];
 let readerSelectedExcerpt = null;
+let readerAnnotationsReady = false;
 let annotationRequestVersion = 0;
 
 function readerAnnotationTargets() {
@@ -3517,9 +3519,17 @@ function captureReaderSelection() {
     const startTarget = startElement?.closest?.("[data-study-target]");
     const endTarget = endElement?.closest?.("[data-study-target]");
     if (!startTarget || startTarget !== endTarget ||
-        !document.getElementById("source-active-viewer")?.contains(startTarget)) return;
+        !document.getElementById("source-active-viewer")?.contains(startTarget)) {
+        readerSelectedExcerpt = null;
+        return;
+    }
     const excerpt = range.toString();
-    if (!excerpt.trim() || excerpt.length > 500) return;
+    if (!excerpt.trim() || excerpt.length > 500) {
+        readerSelectedExcerpt = null;
+        const status = document.getElementById("reader-annotation-status");
+        if (status) status.textContent = "Select up to 500 characters within a single preview paragraph or slide item.";
+        return;
+    }
     const before = range.cloneRange();
     before.selectNodeContents(startTarget);
     before.setEnd(range.startContainer, range.startOffset);
@@ -3583,7 +3593,9 @@ function renderReaderAnnotations() {
     const supported = /\.(docx|pages|pptx)$/i.test(reader.files[reader.index]?.filename || "");
     const hint = document.getElementById("reader-highlight-hint");
     const button = document.getElementById("reader-highlight-submit");
-    if (button) button.disabled = !supported;
+    if (button) button.disabled = !supported || !readerAnnotationsReady;
+    const saveNote = document.getElementById("reader-annotation-submit");
+    if (saveNote) saveNote.disabled = !readerAnnotationsReady;
     if (hint) hint.textContent = supported
         ? "Select text within one paragraph, heading or slide item, then choose a color and save the highlight."
         : "Inline highlighting is available for Word, Pages and PowerPoint previews. Personal notes work on any source.";
@@ -3592,6 +3604,10 @@ function renderReaderAnnotations() {
 async function loadReaderAnnotations(noteId) {
     if (!isAuthenticated()) return;
     const version = ++annotationRequestVersion;
+    readerAnnotationsReady = false;
+    renderReaderAnnotations();
+    const retry = document.getElementById("reader-annotations-retry");
+    if (retry) retry.hidden = true;
     const token = getAccessToken();
     const status = document.getElementById("reader-annotation-status");
     if (status) status.textContent = "Loading private annotations...";
@@ -3602,18 +3618,23 @@ async function loadReaderAnnotations(noteId) {
         if (version !== annotationRequestVersion || token !== getAccessToken() ||
             activePublicReader?.noteId !== noteId) return;
         readerAnnotations = data.annotations || [];
+        readerAnnotationsReady = true;
+        if (retry) retry.hidden = true;
         if (status) status.textContent = "Only you can see these annotations.";
         applyReaderHighlights();
         renderReaderAnnotations();
     } catch (error) {
         if (version !== annotationRequestVersion || activePublicReader?.noteId !== noteId) return;
+        readerAnnotationsReady = false;
+        renderReaderAnnotations();
+        if (retry) retry.hidden = false;
         if (status) status.textContent = error.message || "Private annotations are unavailable.";
     }
 }
 
 async function addReaderAnnotation(kind) {
     const reader = activePublicReader;
-    if (!reader || !isAuthenticated()) return;
+    if (!reader || !isAuthenticated() || !readerAnnotationsReady) return;
     const token = getAccessToken();
     const noteId = reader.noteId, fileId = reader.files[reader.index]?.fileId;
     const textInput = document.getElementById("reader-annotation-text");
@@ -3669,10 +3690,12 @@ async function addReaderAnnotation(kind) {
 
 function setupReaderAnnotations(noteId) {
     if (!isAuthenticated()) return;
+    readerAnnotationsReady = false;
     readerAnnotations = [];
     readerSelectedExcerpt = null;
     document.getElementById("reader-annotation-submit")?.addEventListener("click", () => addReaderAnnotation("note"));
     document.getElementById("reader-highlight-submit")?.addEventListener("click", () => addReaderAnnotation("highlight"));
+    document.getElementById("reader-annotations-retry")?.addEventListener("click", () => loadReaderAnnotations(noteId));
     renderReaderAnnotations();
     loadReaderAnnotations(noteId);
 }
@@ -3744,6 +3767,7 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
     ++annotationRequestVersion;
     readerAnnotations = [];
     readerSelectedExcerpt = null;
+    readerAnnotationsReady = false;
     activePublicReader = null;
     exitPublicReaderFocus();
     document.getElementById("public-contributor-detail").hidden = true;
@@ -3921,6 +3945,7 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
                         </div>
                         <p id="reader-highlight-hint" class="status-text"></p>
                         <p id="reader-annotation-status" class="status-text" role="status" aria-live="polite"></p>
+                        <button id="reader-annotations-retry" type="button" class="button button-secondary" hidden>Retry loading private notes</button>
                         <div id="reader-annotations-list" class="reader-annotations-list"></div>
                     </section>
                 ` : ""}
