@@ -267,6 +267,130 @@ def study_dashboard(user_id):
     return response(200, {"continueStudying": recent[:20], "sessions": history})
 
 
+
+MAX_ANNOTATIONS_PER_NOTE = 100
+HIGHLIGHT_EXTENSIONS = (".docx", ".pages", ".pptx")
+HIGHLIGHT_COLORS = ("yellow", "blue", "green", "pink")
+
+
+def annotation_file(note, file_id):
+    if not isinstance(file_id, str) or not file_id or len(file_id) > 180:
+        return None
+    return next((f for f in safe_files(note) if f.get("fileId") == file_id), None)
+
+
+def list_annotations(user_id, note_id):
+    note = public_note(note_id)
+    if not note:
+        return response(404, {"error": "This note is no longer publicly available."})
+    prefix = f"ANNOTATION#{note_id}#"
+    result = activity_table.query(
+        KeyConditionExpression=Key("userId").eq(user_id) & Key("recordKey").begins_with(prefix),
+        ConsistentRead=True, Limit=MAX_ANNOTATIONS_PER_NOTE + 1,
+    )
+    records = result.get("Items") or []
+    if result.get("LastEvaluatedKey") or len(records) > MAX_ANNOTATIONS_PER_NOTE:
+        return response(409, {"error": "Annotation limit reached. Contact support to review existing annotations."})
+    eligible_ids = {f.get("fileId") for f in safe_files(note)}
+    output = []
+    for item in records:
+        if item.get("fileId") not in eligible_ids:
+            continue
+        record = {
+            "id": item.get("annotationId"),
+            "fileId": item.get("fileId"),
+            "kind": item.get("kind"),
+            "text": item.get("text") or "",
+            "createdAt": item.get("createdAt"),
+        }
+        if item.get("kind") == "highlight":
+            record["anchor"] = item.get("anchor")
+            record["color"] = item.get("color") or "yellow"
+        output.append(record)
+    output.sort(key=lambda item: item.get("createdAt") or "", reverse=True)
+    return response(200, {"annotations": output, "limit": MAX_ANNOTATIONS_PER_NOTE})
+
+
+def create_annotation(user_id, note_id, payload):
+    note = public_note(note_id)
+    if not note:
+        return response(404, {"error": "This note is no longer publicly available."})
+    file_id = payload.get("fileId")
+    source = annotation_file(note, file_id)
+    if not source:
+        return response(400, {"error": "Select an available source file."})
+    kind = payload.get("kind")
+    if kind not in ("note", "highlight"):
+        return response(400, {"error": "Invalid annotation type."})
+    content = payload.get("text")
+    if not isinstance(content, str):
+        return response(400, {"error": "Invalid annotation text."})
+    content = content.strip()
+    if kind == "note" and (not content or len(content) > 1000):
+        return response(400, {"error": "Notes must contain 1–1000 characters."})
+    if kind == "highlight" and content:
+        return response(400, {"error": "Highlights cannot contain a written note."})
+
+    item = {
+        "userId": user_id, "recordKey": "",
+        "noteId": note_id, "fileId": file_id, "kind": kind,
+        "text": content, "createdAt": utc_now().isoformat(),
+        "annotationId": str(uuid.uuid4()),
+    }
+    if kind == "highlight":
+        filename = (source.get("filename") or "").lower()
+        if not filename.endswith(HIGHLIGHT_EXTENSIONS):
+            return response(400, {"error": "Inline highlighting is supported for Word, Pages and PowerPoint previews."})
+        anchor = payload.get("anchor")
+        if not isinstance(anchor, dict) or set(anchor) != {"target", "start", "end", "quote"}:
+            return response(400, {"error": "Select text from one preview paragraph or slide item."})
+        target, start, end, quote = (
+            anchor.get("target"), anchor.get("start"), anchor.get("end"), anchor.get("quote")
+        )
+        if (
+            type(target) is not int or target < 0 or target > 10000
+            or type(start) is not int or type(end) is not int
+            or start < 0 or end <= start or end > 20000
+            or not isinstance(quote, str) or len(quote) != end - start
+            or not quote.strip() or len(quote) > 500
+        ):
+            return response(400, {"error": "Invalid highlight selection."})
+        color = payload.get("color", "yellow")
+        if color not in HIGHLIGHT_COLORS:
+            return response(400, {"error": "Unsupported highlight color."})
+        item["anchor"] = {"target": target, "start": start, "end": end, "quote": quote}
+        item["color"] = color
+
+    prefix = f"ANNOTATION#{note_id}#"
+    existing = activity_table.query(
+        KeyConditionExpression=Key("userId").eq(user_id) & Key("recordKey").begins_with(prefix),
+        Limit=MAX_ANNOTATIONS_PER_NOTE, Select="COUNT",
+    )
+    if int(existing.get("Count") or 0) >= MAX_ANNOTATIONS_PER_NOTE or existing.get("LastEvaluatedKey"):
+        return response(409, {"error": "You have reached the 100-annotation limit for this note."})
+    item["recordKey"] = prefix + item["annotationId"]
+    activity_table.put_item(
+        Item=item,
+        ConditionExpression="attribute_not_exists(userId) AND attribute_not_exists(recordKey)",
+    )
+    output = {
+        "id": item["annotationId"], "fileId": file_id,
+        "kind": kind, "text": content, "createdAt": item["createdAt"],
+    }
+    if kind == "highlight":
+        output["anchor"] = item["anchor"]
+        output["color"] = item["color"]
+    return response(201, {"annotation": output})
+
+
+def delete_annotation(user_id, note_id, annotation_id):
+    # Deletion is permitted even when the original public note is unavailable.
+    # The userId key prevents deleting another reader's annotation.
+    key = {"userId": user_id, "recordKey": f"ANNOTATION#{note_id}#{annotation_id}"}
+    activity_table.delete_item(Key=key)
+    return response(200, {"deleted": True})
+
+
 def lambda_handler(event, context):
     user_id = user_from_event(event)
     if not user_id:
@@ -274,6 +398,21 @@ def lambda_handler(event, context):
     method = event.get("requestContext", {}).get("http", {}).get("method", "GET").upper()
     path = event.get("rawPath") or ""
     parameters = event.get("pathParameters") or {}
+
+    if "/annotations/" in path:
+        note_id = canonical_uuid(parameters.get("noteId"))
+        if not note_id:
+            return response(400, {"error": "Invalid note ID."})
+        annotation_id = parameters.get("annotationId")
+        if method == "DELETE" and annotation_id is not None:
+            annotation_id = canonical_uuid(annotation_id)
+            return delete_annotation(user_id, note_id, annotation_id) if annotation_id else response(400, {"error": "Invalid annotation ID."})
+        if annotation_id is None and method == "GET":
+            return list_annotations(user_id, note_id)
+        if annotation_id is None and method == "POST":
+            payload = body_json(event)
+            return create_annotation(user_id, note_id, payload) if payload is not None else response(400, {"error": "Invalid request body."})
+        return response(405, {"error": "Method not allowed."})
 
     if method == "GET" and path.rstrip("/").endswith("/api/study"):
         return study_dashboard(user_id)

@@ -958,6 +958,28 @@ Resources:
             Method: PATCH
             PayloadFormatVersion: "2.0"
 
+        ListPrivateAnnotations:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/annotations/{noteId}
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        AddPrivateAnnotation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/annotations/{noteId}
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        DeletePrivateAnnotation:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/study/annotations/{noteId}/{annotationId}
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
+
   SavedNotesFunction:
     Type: AWS::Serverless::Function
     Properties:
