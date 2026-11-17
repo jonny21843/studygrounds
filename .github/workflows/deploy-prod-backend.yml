@@ -1,7 +1,7 @@
-# No production backend deployment configuration exists in this repository yet.
-# Keep this workflow intentionally non-deploying until the PROD stack, account,
-# IAM role, Cognito IDs, API custom domain and allowed origins are verified.
-name: Deploy StudyGrounds PROD backend (not configured)
+# This legacy placeholder stays inert. The single production release pipeline
+# is .github/workflows/deploy-prod-frontend.yml, which deploys backend first
+# and publishes frontend only after the backend verification succeeds.
+name: StudyGrounds PROD backend (managed by coordinated release)
 
 on:
   workflow_dispatch:
@@ -10,14 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  deployment-not-configured:
-    name: Production backend deployment not configured
+  explanation:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: production
     steps:
-      - name: Explain disabled deployment
-        run: |
-          echo "::notice::Production backend deployment is not configured."
-          echo "No AWS credentials are loaded and no deployment will run."
-          echo "Set up the production SAM stack and credentials before enabling this workflow."
+      - run: echo "::notice::Use 'Deploy StudyGrounds PROD (backend then frontend)' for production releases. This workflow makes no AWS changes."

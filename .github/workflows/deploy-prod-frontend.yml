@@ -1,37 +1,106 @@
-name: Deploy StudyGrounds PROD frontend
+# Single ordered release pipeline. A merge into main always updates backend
+# first and verifies the public API before publishing frontend assets.
+name: Deploy StudyGrounds PROD (backend then frontend)
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
-    paths:
-      - "index.html"
-      - "study-notes.html"
-      - "robots.txt"
-      - "sitemap.xml"
-      - "styles.css"
-      - "auth.js"
-      - "notes.js"
-      - "tabs.js"
-      - "auth/**"
-      - ".github/workflows/deploy-prod-frontend.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: studygrounds-production-frontend
-  cancel-in-progress: true
+  group: studygrounds-production-release
+  cancel-in-progress: false
 
 jobs:
-  deploy:
+  deploy-backend:
+    name: Deploy backend and verify PROD API
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout release commit
+        uses: actions/checkout@v4
+
+      - name: Configure production AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Verify AWS account and production stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "248189942252"
+          test "$(aws sts get-caller-identity --query Arn --output text | grep -c 'assumed-role/StudyGroundsProductionDeploy/')" -ge 1
+          test "$(aws cloudformation describe-stacks --stack-name studygrounds-prod --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "CREATE_COMPLETE" ||           test "$(aws cloudformation describe-stacks --stack-name studygrounds-prod --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "UPDATE_COMPLETE"
+          test "$(aws cloudformation describe-stack-resource --stack-name studygrounds-prod --logical-resource-id NotesApi --region us-east-2 --query 'StackResourceDetail.PhysicalResourceId' --output text)" = "vhtlpng5e3"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up AWS SAM
+        uses: aws-actions/setup-sam@v3
+
+      - name: Build backend
+        run: sam build --no-cached --template-file infrastructure/template.yaml
+
+      - name: Deploy existing production backend stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          sam deploy \
+            --template-file .aws-sam/build/template.yaml \
+            --stack-name studygrounds-prod \
+            --region us-east-2 \
+            --capabilities CAPABILITY_IAM \
+            --s3-bucket aws-sam-cli-managed-default-samclisourcebucket-z4bksjkichi5 \
+            --s3-prefix "studygrounds-prod/releases/${GITHUB_SHA}" \
+            --role-arn arn:aws:iam::248189942252:role/StudyGroundsProdCloudFormationExecutionRole \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              EnvironmentName=prod \
+              ResourceNamePrefix=studygrounds-prod \
+              SiteUrl=https://joinstudygrounds.com \
+              "EmailSubjectPrefix=[PROD]" \
+              CognitoUserPoolId=us-east-2_450eBSuUP \
+              CognitoAppClientId=5s7dcd9viec7heodncol82eqtj \
+              AdminEmails=jonathan.feagans@outlook.com \
+              CloudFrontOrigin=https://d84l1y8p4kdic.cloudfront.net \
+              'AllowedOrigins=http://localhost:8080,https://joinstudygrounds.com,https://www.joinstudygrounds.com,https://prod-preview.joinstudygrounds.com'
+
+      - name: Verify production stack and API
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(aws cloudformation describe-stacks --stack-name studygrounds-prod --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "UPDATE_COMPLETE"
+          api_url="$(aws cloudformation describe-stacks --stack-name studygrounds-prod --region us-east-2 --query 'Stacks[0].Outputs[?OutputKey==`ApiBaseUrl`].OutputValue | [0]' --output text)"
+          test "$api_url" = "https://vhtlpng5e3.execute-api.us-east-2.amazonaws.com"
+          python - <<'PY'
+          import json
+          import urllib.request
+          url = "https://vhtlpng5e3.execute-api.us-east-2.amazonaws.com/api/public/notes"
+          with urllib.request.urlopen(url, timeout=30) as response:
+              if response.status != 200:
+                  raise RuntimeError(f"Public notes API returned HTTP {response.status}")
+              json.load(response)
+          print("Production public-notes API smoke test passed.")
+          PY
+
+  deploy-frontend:
     name: Deploy frontend to production
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
-
+    needs: deploy-backend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -91,3 +160,4 @@ jobs:
           aws cloudfront create-invalidation \
             --distribution-id E2JRRP7BOC2CAU \
             --paths "/*"
+
