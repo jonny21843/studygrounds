@@ -3160,19 +3160,32 @@ async function initializeSaveButton(noteId) {
     button.disabled = true;
     button.textContent = "Checking saved status...";
     let saved = false;
+    let automaticallySaved = false;
+    // Annotation creation and bookmarking happen atomically in the backend.
+    // Keep this existing button's state in sync without attaching extra click handlers.
+    button.addEventListener("study:auto-saved", () => {
+        automaticallySaved = true;
+        saved = true;
+        button.textContent = "✓ Saved — remove";
+        button.setAttribute("aria-pressed", "true");
+        feedback.textContent = "In your Saved Notes library";
+    });
     try {
         const response = await authenticatedFetch(`/api/saved-notes/${encodeURIComponent(noteId)}`);
         const data = await response.json();
         if (!button.isConnected || button.dataset.noteId !== noteId) return;
         if (!response.ok) throw new Error(data.error || "Unable to check saved note.");
-        saved = Boolean(data.saved);
+        saved = automaticallySaved || Boolean(data.saved);
     } catch (error) {
         if (!button.isConnected) return;
-        button.textContent = "Try saved status again";
-        button.disabled = false;
-        feedback.textContent = "Saved status unavailable. Please retry.";
-        button.addEventListener("click", () => initializeSaveButton(noteId), {once: true});
-        return;
+        if (!automaticallySaved) {
+            button.textContent = "Try saved status again";
+            button.disabled = false;
+            feedback.textContent = "Saved status unavailable. Please retry.";
+            button.addEventListener("click", () => initializeSaveButton(noteId), {once: true});
+            return;
+        }
+        saved = true;
     }
     button.disabled = false;
     const draw = () => {
@@ -3675,12 +3688,20 @@ async function addReaderAnnotation(kind) {
         if (!response.ok) throw new Error(data.error || "Unable to save annotation.");
         if (activePublicReader?.noteId !== noteId || token !== getAccessToken()) return;
         readerAnnotations.unshift(data.annotation);
+        if (data.saved === true) {
+            const saveButton = document.getElementById("save-public-note");
+            if (saveButton?.dataset.noteId === noteId) {
+                saveButton.dispatchEvent(new Event("study:auto-saved"));
+            }
+        }
         if (kind === "note") textInput.value = "";
         readerSelectedExcerpt = null;
         window.getSelection()?.removeAllRanges();
         applyReaderHighlights();
         renderReaderAnnotations();
-        if (status) status.textContent = "Saved privately to your account.";
+        if (status) status.textContent = data.saved === true
+            ? "Saved privately. This note was also added to Saved Notes."
+            : "Saved privately to your account.";
     } catch (error) {
         if (status) status.textContent = error.message || "Unable to save annotation.";
     } finally {
