@@ -13,7 +13,8 @@ account = os.getenv("STUDY_ACCOUNT", "")
 report = {
     "target": target, "stackName": stack_name, "account": None,
     "status": None, "stackParameters": {}, "cloudFormationRole": None,
-    "resources": {}, "iamRoles": {}, "blockers": [], "warnings": [],
+    "resources": {}, "iamRoles": {}, "callerIdentityType": None,
+    "relatedIamRoleNames": [], "blockers": [], "warnings": [],
 }
 
 def warn(message):
@@ -54,6 +55,44 @@ def inspect_role(arn, label):
             warn(f"{label}: inline policies truncated.")
     warn(f"{label}: policy names alone cannot prove deploy permissions; inspect policy documents, boundaries and SCPs.")
 
+def inspect_current_identity(identity):
+    arn = identity.get("Arn", "")
+    if ":assumed-role/" in arn or ":role/" in arn:
+        report["callerIdentityType"] = "role"
+        inspect_role(arn, "currentAwsCallerRole")
+    elif ":user/" in arn:
+        report["callerIdentityType"] = "iam-user"
+        report["iamUserName"] = arn.split(":user/", 1)[1].split("/")[-1]
+        warn("Current AWS CLI identity is an IAM user, not the GitHub deployment role. Inspect PROD deployment roles separately.")
+    elif ":root" in arn:
+        report["callerIdentityType"] = "root"
+        warn("Current AWS identity is the AWS account root user; use a least-privilege read-only identity for subsequent audits.")
+    else:
+        report["callerIdentityType"] = "other"
+        warn("STS identity format is not a standard IAM user/role; inspect the identity before changing permissions.")
+
+def inspect_related_roles():
+    # Inventory names only. Not a permissions evaluation; it cannot prove
+    # GitHub OIDC trust, CloudFormation permissions, boundaries or SCPs.
+    iam = boto3.client("iam")
+    try:
+        paginator = iam.get_paginator("list_roles")
+        candidates = []
+        for page in paginator.paginate():
+            for item in page.get("Roles", []):
+                name = item.get("RoleName", "")
+                if ("studyground" in name.lower() or "notes-app" in name.lower()):
+                    candidates.append(name)
+        report["relatedIamRoleNames"] = sorted(candidates)
+        for name in sorted(candidates):
+            # No trust policy or secrets included in report; only policy names.
+            inspect_role(f"arn:aws:iam::{account}:role/{name}", f"discovered:{name}")
+        if not candidates:
+            warn("No StudyGrounds-named IAM roles visible; role names may use a different naming convention.")
+    except ClientError as e:
+        warn("Cannot list IAM roles (" + e.response.get("Error", {}).get("Code", "AWS error") +
+             "). A separate admin or read-only IAM profile may be required.")
+
 if target not in ("development", "production") or not stack_name or not re.fullmatch(r"\d{12}", account):
     block("Provide a target, actual existing backend stack name and 12-digit AWS account ID.")
 else:
@@ -64,7 +103,8 @@ else:
         report["account"] = identity["Account"]
         if report["account"] != account:
             block("Assumed AWS role is in an unexpected account.")
-        inspect_role(identity.get("Arn"), "githubDeployerRole")
+        inspect_current_identity(identity)
+        inspect_related_roles()
     cf = boto3.client("cloudformation", region_name="us-east-2")
     result = read("DescribeStacks", cf.describe_stacks, StackName=stack_name)
     stack = next(iter((result or {}).get("Stacks", [])), None)
@@ -89,7 +129,7 @@ else:
         if stack.get("RoleARN"):
             inspect_role(stack["RoleARN"], "cloudFormationExecutionRole")
         else:
-            warn("No stack execution RoleARN: check whether deployer acts as CloudFormation execution principal.")
+            warn("Stack has no stored CloudFormation execution RoleARN. This is valid; deployment may use the caller's effective permissions. Verify the actual PROD deployment identity before updating.")
         try:
             pages = cf.get_paginator("list_stack_resources").paginate(StackName=stack_name)
             for page in pages:
