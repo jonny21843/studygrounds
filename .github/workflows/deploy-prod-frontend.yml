@@ -39,7 +39,8 @@ jobs:
           test "$(aws sts get-caller-identity --query Account --output text)" = "248189942252"
           test "$(aws sts get-caller-identity --query Arn --output text | grep -c 'assumed-role/StudyGroundsProductionDeploy/')" -ge 1
           test "$(aws cloudformation describe-stacks --stack-name studygrounds-prod --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "CREATE_COMPLETE" ||           test "$(aws cloudformation describe-stacks --stack-name studygrounds-prod --region us-east-2 --query 'Stacks[0].StackStatus' --output text)" = "UPDATE_COMPLETE"
-          test "$(aws cloudformation describe-stack-resource --stack-name studygrounds-prod --logical-resource-id NotesApi --region us-east-2 --query 'StackResourceDetail.PhysicalResourceId' --output text)" = "vhtlpng5e3"
+          api_url="$(aws cloudformation describe-stacks --stack-name studygrounds-prod --region us-east-2 --query 'Stacks[0].Outputs[?OutputKey==`ApiBaseUrl`].OutputValue | [0]' --output text)"
+          test "$api_url" = "https://vhtlpng5e3.execute-api.us-east-2.amazonaws.com"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5

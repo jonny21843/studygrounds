@@ -40,7 +40,8 @@ jobs:
           test "$(aws sts get-caller-identity --query Arn --output text | grep -c 'assumed-role/StudyGroundsDevDeploy/')" -ge 1
           stack_status="$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].StackStatus' --output text)"
           [[ "$stack_status" == "CREATE_COMPLETE" || "$stack_status" == "UPDATE_COMPLETE" ]]
-          test "$(aws cloudformation describe-stack-resource --stack-name notes-app-dev --logical-resource-id NotesApi --region us-east-2 --query 'StackResourceDetail.PhysicalResourceId' --output text)" = "nxa9uz2cv0"
+          api_url="$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].Outputs[?OutputKey==`ApiBaseUrl`].OutputValue | [0]' --output text)"
+          test "$api_url" = "https://nxa9uz2cv0.execute-api.us-east-2.amazonaws.com"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
