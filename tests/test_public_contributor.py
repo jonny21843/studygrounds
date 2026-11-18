@@ -19,6 +19,9 @@ class FakeTable:
         self.items = items
         self.scan_calls = 0
 
+    def get_item(self, **kwargs):
+        return {"Item": {}}
+
     def scan(self, **kwargs):
         self.scan_calls += 1
         return {"Items": self.items}
@@ -76,6 +79,22 @@ class PublicContributorTests(unittest.TestCase):
         self.assertNotIn("bob-sub", json.dumps(body))
         self.assertNotIn("files", body["notes"][0])
         self.assertEqual(body["contributor"]["subjects"], ["Technology"])
+
+
+    def test_public_profile_bio_avatar_and_helpful_totals(self):
+        self.table.items = [
+            {**self.note("alice-sub", "One"), "helpfulCount": 6},
+            {**self.note("alice-sub", "Two"), "helpfulCount": 4},
+        ]
+        self.table.get_item = lambda **kwargs: {
+            "Item": {"bio": "Biology learner.", "avatarStyle": "emerald"}
+        }
+        status, body = self.get(self.alice_id)
+        self.assertEqual(status, 200)
+        self.assertEqual(body["contributor"]["bio"], "Biology learner.")
+        self.assertEqual(body["contributor"]["avatarStyle"], "emerald")
+        self.assertEqual(body["contributor"]["helpfulCount"], 10)
+        self.assertNotIn("alice-sub", json.dumps(body))
 
     def test_unknown_id_and_no_public_notes_are_404(self):
         self.assertEqual(self.get("not-a-valid-id")[0], 404)
