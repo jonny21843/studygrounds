@@ -970,6 +970,7 @@ Resources:
         Variables:
           NOTES_TABLE: !Ref NotesTable
           SITE_URL: !Ref SiteUrl
+          ENVIRONMENT_NAME: !Ref EnvironmentName
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref NotesTable

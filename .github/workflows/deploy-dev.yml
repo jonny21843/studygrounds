@@ -96,6 +96,16 @@ jobs:
               json.load(response)
           print("Development public-notes API smoke test passed.")
           PY
+          python - <<'PY'
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          with urllib.request.urlopen("https://nxa9uz2cv0.execute-api.us-east-2.amazonaws.com/sitemap.xml", timeout=30) as response:
+              assert response.status == 200
+              assert "noindex" in response.headers.get("X-Robots-Tag", "")
+              xml = response.read()
+          assert ET.fromstring(xml).tag.endswith("urlset")
+          print("DEV dynamic sitemap and noindex header smoke test passed.")
+          PY
 
   deploy-frontend:
     name: Deploy frontend to development
@@ -120,6 +130,7 @@ jobs:
           mkdir -p dist/auth
           cp index.html study-notes.html robots.txt sitemap.xml styles.css auth.js notes.js tabs.js dist/
           cp auth/*.html auth/*.js dist/auth/
+          python scripts/prepare_dev_seo.py dist
 
           cat > dist/config.js <<'EOF'
           window.BUCKET_URL = "";

@@ -39,6 +39,7 @@ Parameters:
 Conditions:
   HasWwwDomain: !Not [!Equals [!Ref WwwDomainName, ""]]
   HasExplicitFrontendBucketName: !Not [!Equals [!Ref FrontendBucketName, ""]]
+  IsDevelopment: !Equals [!Ref EnvironmentName, dev]
 
 Resources:
   FrontendBucket:
@@ -76,6 +77,14 @@ Resources:
       ResponseHeadersPolicyConfig:
         Name: !Sub "${AWS::StackName}-security-headers"
         Comment: Security headers for StudyGrounds.
+        # Frontend stack is separately deployed; when updated, protect all DEV routes.
+        CustomHeadersConfig: !If
+          - IsDevelopment
+          - Items:
+              - Header: X-Robots-Tag
+                Value: "noindex, nofollow, noarchive"
+                Override: true
+          - !Ref "AWS::NoValue"
         SecurityHeadersConfig:
           ContentSecurityPolicy:
             ContentSecurityPolicy: !Sub >-

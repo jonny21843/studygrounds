@@ -11,6 +11,7 @@ from boto3.dynamodb.conditions import Attr, Key
 
 table = boto3.resource("dynamodb").Table(os.environ["NOTES_TABLE"])
 site_url = os.environ.get("SITE_URL", "https://joinstudygrounds.com").rstrip("/")
+is_dev = os.environ.get("ENVIRONMENT_NAME", "dev") != "prod"
 
 
 def response(status_code, body, content_type="text/html; charset=utf-8", headers=None):
@@ -20,6 +21,8 @@ def response(status_code, body, content_type="text/html; charset=utf-8", headers
     }
     if headers:
         merged.update(headers)
+    if is_dev:
+        merged["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return {
         "statusCode": status_code,
         "headers": merged,
@@ -47,8 +50,15 @@ def get_public_note(note_id):
         Limit=1,
     )
     items = result.get("Items") or []
-    note = items[0] if items else None
-    if not note or note.get("visibility") != "public":
+    locator = items[0] if items else None
+    if not locator or not locator.get("userId"):
+        return None
+    # Recheck the primary record consistently after the eventually consistent GSI.
+    note = table.get_item(
+        Key={"userId": locator["userId"], "noteId": note_id},
+        ConsistentRead=True,
+    ).get("Item")
+    if not note or note.get("visibility") != "public" or note.get("moderationHold"):
         return None
     if not safe_public_files(note):
         return None
@@ -145,7 +155,7 @@ def note_html(note):
 
 def sitemap_xml():
     notes = []
-    scan_args = {"FilterExpression": Attr("visibility").eq("public")}
+    scan_args = {"FilterExpression": Attr("visibility").eq("public"), "ConsistentRead": True}
 
     while True:
         result = table.scan(**scan_args)
@@ -155,7 +165,12 @@ def sitemap_xml():
             break
         scan_args["ExclusiveStartKey"] = last_key
 
-    notes = [note for note in notes if safe_public_files(note)]
+    notes = [
+        note for note in notes
+        if note.get("visibility") == "public"
+        and not note.get("moderationHold")
+        and safe_public_files(note)
+    ]
     notes.sort(key=lambda item: item.get("publishedAt", ""), reverse=True)
 
     entries = [
