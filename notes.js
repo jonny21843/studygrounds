@@ -407,6 +407,11 @@ function showProfilePanel(profile) {
     const preview = document.getElementById("settings-public-preview");
     if (settingsFirst) settingsFirst.value = profile?.firstName || "";
     if (settingsLast) settingsLast.value = profile?.lastName || "";
+    const bio = document.getElementById("settings-profile-bio");
+    if (bio) bio.value = profile?.bio || "";
+    const avatar = profile?.avatarStyle || "indigo";
+    const radio = document.querySelector('input[name="profile-avatar-style"][value="' + avatar + '"]');
+    if (radio) radio.checked = true;
     if (preview) {
         preview.textContent = profile?.publicAuthor
             ? `Public notes currently show: ${profile.publicAuthor}`
@@ -459,6 +464,8 @@ async function saveSettingsProfile(event) {
     event.preventDefault();
     const firstName = document.getElementById("settings-first-name").value.trim();
     const lastName = document.getElementById("settings-last-name").value.trim();
+    const bio = document.getElementById("settings-profile-bio").value.trim();
+    const avatarStyle = document.querySelector('input[name="profile-avatar-style"]:checked')?.value || "indigo";
     const status = document.getElementById("settings-profile-status");
     const button = document.getElementById("settings-profile-submit");
 
@@ -475,7 +482,7 @@ async function saveSettingsProfile(event) {
         const response = await authenticatedFetch("/api/profile", {
             method: "PATCH",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({firstName, lastName})
+            body: JSON.stringify({firstName, lastName, bio, avatarStyle})
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Unable to save profile.");
@@ -2589,11 +2596,12 @@ async function openPublicContributor(contributorId, updateUrl = true, requestedP
         const noteList = data.notes || [];
         content.innerHTML = `
             <header class="contributor-profile-hero">
-                <div class="contributor-avatar" aria-hidden="true">${escapeHtml((contributor.displayName || "C").slice(0, 1).toUpperCase())}</div>
+                <div class="contributor-avatar avatar-${["indigo","emerald","rose","amber","slate","ocean"].includes(contributor.avatarStyle) ? contributor.avatarStyle : "indigo"}" aria-hidden="true">${escapeHtml((contributor.displayName || "C").slice(0, 1).toUpperCase())}</div>
                 <div class="contributor-profile-main">
                     <p class="eyebrow">Community contributor</p>
                     <h2>${escapeHtml(contributor.displayName || "Community member")}</h2>
-                    <p>${Number(contributor.contributionCount || 0).toLocaleString()} published ${Number(contributor.contributionCount || 0) === 1 ? "note" : "notes"}</p>
+                    <p class="contributor-bio">${escapeHtml(contributor.bio || "Sharing notes with the StudyGrounds community.")}</p>
+                    <p>${Number(contributor.contributionCount || 0).toLocaleString()} published ${Number(contributor.contributionCount || 0) === 1 ? "note" : "notes"} · ♡ ${Number(contributor.helpfulCount || 0).toLocaleString()} helpful votes · ${(contributor.subjects || []).length} subjects</p>
                 </div>
                 <button type="button" class="button button-secondary" id="share-contributor-profile">Copy Profile Link</button>
             </header>

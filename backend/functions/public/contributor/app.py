@@ -8,7 +8,10 @@ import boto3
 from boto3.dynamodb.conditions import Attr
 
 
-table = boto3.resource("dynamodb").Table(os.environ["NOTES_TABLE"])
+db = boto3.resource("dynamodb")
+table = db.Table(os.environ["NOTES_TABLE"])
+profiles = db.Table(os.environ["PREFERENCES_TABLE"])
+AVATARS = {"indigo", "emerald", "rose", "amber", "slate", "ocean"}
 VALID_ID = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -102,10 +105,19 @@ def lambda_handler(event, context):
         (note.get("publicAuthor") for note in matching if note.get("publicAuthor")),
         "Community member",
     )
+    owner_id = matching[0]["userId"]
+    profile = profiles.get_item(
+        Key={"pk": "USER#" + owner_id, "sk": "PUBLIC_PROFILE"},
+        ConsistentRead=True,
+    ).get("Item") or {}
+    avatar = profile.get("avatarStyle")
     return response(200, {
         "contributor": {
             "id": target,
             "displayName": author_label,
+            "bio": profile.get("bio") or "",
+            "avatarStyle": avatar if avatar in AVATARS else "indigo",
+            "helpfulCount": sum(max(0, int(n.get("helpfulCount") or 0)) for n in matching),
             "contributionCount": total,
             "subjects": subjects,
             "topics": topics,

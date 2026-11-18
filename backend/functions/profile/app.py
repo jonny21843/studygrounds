@@ -1,11 +1,41 @@
 import json
 import os
+import re
 
 import boto3
 
 
 cognito = boto3.client("cognito-idp")
 user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
+profiles = boto3.resource("dynamodb").Table(os.environ["PREFERENCES_TABLE"])
+AVATARS = {"indigo", "emerald", "rose", "amber", "slate", "ocean"}
+PROFILE_KEY = "PUBLIC_PROFILE"
+
+
+def profile_fields(user_id):
+    if not user_id:
+        return {"bio": "", "avatarStyle": "indigo"}
+    item = profiles.get_item(
+        Key={"pk": "USER#" + user_id, "sk": PROFILE_KEY},
+        ConsistentRead=True,
+    ).get("Item") or {}
+    return {
+        "bio": item.get("bio") or "",
+        "avatarStyle": item.get("avatarStyle") if item.get("avatarStyle") in AVATARS else "indigo",
+    }
+
+
+def validate_public_profile(payload):
+    bio = payload.get("bio", "")
+    avatar = payload.get("avatarStyle", "indigo")
+    if not isinstance(bio, str) or len(bio) > 280:
+        return None, "Bio must be 280 characters or fewer"
+    if any(ord(ch) < 32 and ch not in "\n\t" for ch in bio):
+        return None, "Bio contains unsupported characters"
+    if not isinstance(avatar, str) or avatar not in AVATARS:
+        return None, "Choose a valid avatar style"
+    return {"bio": bio.strip(), "avatarStyle": avatar}, None
+
 
 
 def response(status_code, body):
@@ -46,7 +76,7 @@ def public_author(first_name, last_name):
     return None
 
 
-def get_profile(username):
+def get_profile(username, user_id):
     user = cognito.admin_get_user(
         UserPoolId=user_pool_id,
         Username=username,
@@ -60,13 +90,15 @@ def get_profile(username):
         "lastName": last_name,
         "complete": bool(first_name.strip() and last_name.strip()),
         "publicAuthor": public_author(first_name, last_name),
+        **profile_fields(user_id),
     }
 
 
 def lambda_handler(event, context):
-    username = username_from_event(event)
-    if not username:
-        return response(401, {"error": "Authenticated username is missing"})
+    username = username_from_event(event) or claims(event).get("cognito:username")
+    user_id = claims(event).get("sub")
+    if not username or not user_id:
+        return response(401, {"error": "Authenticated identity is missing"})
 
     method = (
         event.get("requestContext", {})
@@ -76,15 +108,17 @@ def lambda_handler(event, context):
     )
 
     if method == "GET":
-        return response(200, {"profile": get_profile(username)})
+        return response(200, {"profile": get_profile(username, user_id)})
 
     if method != "PATCH":
         return response(405, {"error": "Method not allowed"})
 
     try:
         payload = json.loads(event.get("body") or "{}")
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         return response(400, {"error": "Request body must be valid JSON"})
+    if not isinstance(payload, dict):
+        return response(400, {"error": "Profile must be a JSON object"})
 
     first_name = (payload.get("firstName") or "").strip()
     last_name = (payload.get("lastName") or "").strip()
@@ -95,6 +129,13 @@ def lambda_handler(event, context):
     if len(first_name) > 60 or len(last_name) > 60:
         return response(400, {"error": "Names must be 60 characters or fewer"})
 
+    public_fields, error = validate_public_profile({
+        "bio": payload.get("bio", profile_fields(user_id)["bio"]),
+        "avatarStyle": payload.get("avatarStyle", profile_fields(user_id)["avatarStyle"]),
+    })
+    if error:
+        return response(400, {"error": error})
+
     cognito.admin_update_user_attributes(
         UserPoolId=user_pool_id,
         Username=username,
@@ -104,6 +145,11 @@ def lambda_handler(event, context):
         ],
     )
 
+    profiles.put_item(Item={
+        "pk": "USER#" + user_id,
+        "sk": PROFILE_KEY,
+        **public_fields,
+    })
     return response(
         200,
         {
@@ -112,6 +158,7 @@ def lambda_handler(event, context):
                 "lastName": last_name,
                 "complete": True,
                 "publicAuthor": public_author(first_name, last_name),
+                **public_fields,
             }
         },
     )

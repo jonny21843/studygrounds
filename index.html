@@ -528,7 +528,7 @@
                 <div>
                     <p class="eyebrow">Account</p>
                     <h2>Settings</h2>
-                    <p class="subtitle">Manage the name used for your public note attribution.</p>
+                    <p class="subtitle">Manage your public contributor bio, avatar, and note attribution.</p>
                 </div>
             </div>
 
@@ -550,6 +550,22 @@
                         Last name
                         <input id="settings-last-name" maxlength="60" autocomplete="family-name" required>
                     </label>
+                    <label class="settings-profile-bio">
+                        Public bio <span class="note-description">(optional, 280 characters)</span>
+                        <textarea id="settings-profile-bio" maxlength="280" rows="3" placeholder="What subjects do you enjoy studying or sharing?"></textarea>
+                    </label>
+                    <fieldset class="profile-avatar-options">
+                        <legend>Avatar color</legend>
+                        <p class="note-description">Choose an initial-based avatar. Photo uploads are not enabled yet.</p>
+                        <div class="avatar-option-grid">
+                            <label><input type="radio" name="profile-avatar-style" value="indigo" checked><span class="avatar-color-dot avatar-indigo"></span> Indigo</label>
+                            <label><input type="radio" name="profile-avatar-style" value="emerald"><span class="avatar-color-dot avatar-emerald"></span> Emerald</label>
+                            <label><input type="radio" name="profile-avatar-style" value="rose"><span class="avatar-color-dot avatar-rose"></span> Rose</label>
+                            <label><input type="radio" name="profile-avatar-style" value="amber"><span class="avatar-color-dot avatar-amber"></span> Amber</label>
+                            <label><input type="radio" name="profile-avatar-style" value="slate"><span class="avatar-color-dot avatar-slate"></span> Slate</label>
+                            <label><input type="radio" name="profile-avatar-style" value="ocean"><span class="avatar-color-dot avatar-ocean"></span> Ocean</label>
+                        </div>
+                    </fieldset>
                     <div class="settings-profile-action">
                         <span id="settings-profile-status" class="status-text" aria-live="polite"></span>
                         <button id="settings-profile-submit" type="submit" class="button button-primary">Save</button>

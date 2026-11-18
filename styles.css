@@ -3282,3 +3282,18 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 .home-note-details p { font-size:.875rem; margin:0; }
 .home-ranking-explanation { color:#667085; font-size:.85rem; margin:.5rem 0; }
 @media (max-width:760px) { .home-personalized { grid-template-columns:1fr; } }
+
+/* Community contributor profiles */
+.settings-profile-bio { grid-column: 1 / -1; }
+.settings-profile-bio textarea { width:100%; box-sizing:border-box; min-height:88px; }
+.profile-avatar-options { grid-column:1 / -1; border:1px solid #eaecf0; border-radius:12px; padding:12px; }
+.avatar-option-grid { display:flex; gap:10px; flex-wrap:wrap; }
+.avatar-option-grid label { display:inline-flex; align-items:center; gap:5px; font-size:.9rem; }
+.avatar-color-dot { width:19px; height:19px; border-radius:100%; display:inline-block; border:1px solid rgba(0,0,0,.1); }
+.avatar-indigo { background:#4655d6; color:white; }
+.avatar-emerald { background:#067647; color:white; }
+.avatar-rose { background:#c11574; color:white; }
+.avatar-amber { background:#b54708; color:white; }
+.avatar-slate { background:#344054; color:white; }
+.avatar-ocean { background:#026aa2; color:white; }
+.contributor-bio { white-space:pre-wrap; overflow-wrap:anywhere; max-width:65ch; }

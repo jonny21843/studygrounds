@@ -497,7 +497,10 @@ Resources:
       Environment:
         Variables:
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          PREFERENCES_TABLE: !Ref PreferencesTable
       Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PreferencesTable
         - Statement:
             - Effect: Allow
               Action:
@@ -1195,9 +1198,12 @@ Resources:
       Environment:
         Variables:
           NOTES_TABLE: !Ref NotesTable
+          PREFERENCES_TABLE: !Ref PreferencesTable
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
       Events:
         PublicContributor:
           Type: HttpApi
