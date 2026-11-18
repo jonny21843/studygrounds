@@ -17,6 +17,7 @@ VALID={"category":"bug","subject":"Broken button","details":"When I click save, 
 class FeedbackTests(unittest.TestCase):
     def setUp(self):
         mod.table.reset_mock()
+        mod.table.update_item.side_effect = None
     def test_auth_required(self):
         self.assertEqual(mod.lambda_handler(event("/api/feedback","POST",body=VALID),None)["statusCode"],401)
         self.assertEqual(mod.lambda_handler(event("/api/admin/feedback","GET",sub="member"),None)["statusCode"],403)
