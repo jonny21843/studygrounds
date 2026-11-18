@@ -68,6 +68,9 @@ jobs:
             fi
           done
 
+      - name: Home navigation regression tests
+        run: node tests/test_home_navigation.cjs
+
       - name: Set up AWS SAM CLI
         uses: aws-actions/setup-sam@v3
 
