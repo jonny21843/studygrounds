@@ -3219,3 +3219,11 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
     .reader-highlight-controls select, .reader-annotations-panel .button { width: 100%; }
     .reader-annotation-card { flex-direction: column; }
 }
+
+/* Home dashboard */
+#home-view { display:grid; gap:1.25rem; }
+#home-view[hidden] { display:none; }
+.home-shortcuts { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr)); gap:1rem; }
+.home-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.65rem; margin-top:1rem; }
+.home-featured { border-left:4px solid #2563eb; }
+#home-view .seo-home-section { width:100%; }

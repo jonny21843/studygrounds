@@ -42,7 +42,8 @@
 
     <main class="app-shell" id="main-content" tabindex="-1">
         <nav class="app-nav" aria-label="Primary">
-            <button id="my-notes-tab" class="nav-button active" type="button" aria-current="page">My Notes</button>
+            <button id="home-tab" class="nav-button active" type="button" aria-current="page">Home</button>
+            <button id="my-notes-tab" class="nav-button" type="button">My Notes</button>
             <button id="explore-tab" class="nav-button" type="button">Explore</button>
             <button id="saved-notes-tab" class="nav-button" type="button" hidden>Saved Notes</button>
             <button id="study-history-tab" class="nav-button" type="button" hidden>Study History</button>
@@ -52,7 +53,50 @@
             <button id="moderation-tab" class="nav-button" type="button" hidden>Moderation</button>
         </nav>
 
-        <section id="my-notes-view">
+        <section id="home-view" aria-label="StudyGrounds Home">
+            <div class="dashboard-toolbar"><div><p class="eyebrow">Your learning space</p>
+                <h2 id="home-welcome">Welcome to StudyGrounds</h2>
+                <p class="subtitle">Find useful notes and pick up where you left off.</p></div></div>
+            <section id="home-featured" class="card home-featured" hidden>
+                <p class="eyebrow">Featured by StudyGrounds</p>
+                <h3 id="home-featured-title"></h3><p id="home-featured-description"></p>
+                <div class="home-actions"><button id="home-featured-open" class="button button-primary" type="button">Read Note</button>
+                <button id="home-featured-hide" class="button button-text" type="button" hidden>Hide</button></div>
+            </section>
+            <section id="home-featured-hidden" class="card" hidden><p>You hid the current featured note.</p>
+                <button id="home-featured-restore" class="button button-secondary" type="button">Show featured note</button></section>
+            <p id="home-featured-status" class="status-text" role="status" aria-live="polite"></p>
+            <div class="home-shortcuts"><section class="card"><h3>Quick actions</h3><div class="home-actions">
+                <button id="home-create" class="button button-primary" type="button" hidden>+ Create Note</button>
+                <button id="home-explore" class="button button-secondary" type="button">Explore Notes</button>
+                <button id="home-sign-in" class="button button-secondary" type="button">Sign In to Get Started</button>
+            </div></section><section id="home-study-card" class="card" hidden><h3>Continue learning</h3>
+                <p>Revisit a study session or saved note.</p><div class="home-actions">
+                <button id="home-history" class="button button-secondary" type="button">Continue Studying</button>
+                <button id="home-saved" class="button button-secondary" type="button">Saved Notes</button>
+            </div></section></div>
+        </section>
+        <section class="seo-home-section" aria-labelledby="seo-home-title">
+            <p class="eyebrow">Built for learning</p>
+            <h2 id="seo-home-title">Find study notes across the subjects you care about.</h2>
+            <p>StudyGrounds is a community study library where students and lifelong learners can discover public notes and source materials, keep their own study files organized, and publish useful resources for others.</p>
+            <div class="seo-home-grid">
+                <article>
+                    <h3>Discover useful material</h3>
+                    <p>Browse public study notes by subject, topic, title, and keywords.</p>
+                </article>
+                <article>
+                    <h3>Keep source files together</h3>
+                    <p>Organize PDFs, images, Word documents, PowerPoint presentations, Excel workbooks, and Apple Pages files alongside each note.</p>
+                </article>
+                <article>
+                    <h3>Share when you are ready</h3>
+                    <p>Your notes stay private until you publish them. Public materials keep attribution while your account identity remains protected.</p>
+                </article>
+            </div>
+            <p class="seo-home-link"><a href="/study-notes.html">Learn more about finding and sharing study notes on StudyGrounds →</a></p>
+        </section>
+        <section id="my-notes-view" hidden>
             <section id="signed-out-panel" class="hero-card">
                 <div>
                     <p class="eyebrow">Your study library</p>
@@ -450,31 +494,13 @@
                 </form>
             </section>
 
+            <section class="card"><h3>Featured content</h3><p class="note-description">Restore the current featured note after hiding it.</p><button id="settings-restore-featured" class="button button-secondary" type="button" disabled>Show featured note</button></section>
             <section class="card">
                 <h3>V1 upload limits</h3>
                 <p class="note-description">Up to 10 source files per note, 20 MB per file, and one upload at a time. Supported types: PDF, JPG/JPEG, PNG, WEBP, DOCX, PPTX, XLSX, and Apple Pages.</p>
             </section>
         </section>
-        <section class="seo-home-section" aria-labelledby="seo-home-title">
-            <p class="eyebrow">Built for learning</p>
-            <h2 id="seo-home-title">Find study notes across the subjects you care about.</h2>
-            <p>StudyGrounds is a community study library where students and lifelong learners can discover public notes and source materials, keep their own study files organized, and publish useful resources for others.</p>
-            <div class="seo-home-grid">
-                <article>
-                    <h3>Discover useful material</h3>
-                    <p>Browse public study notes by subject, topic, title, and keywords.</p>
-                </article>
-                <article>
-                    <h3>Keep source files together</h3>
-                    <p>Organize PDFs, images, Word documents, PowerPoint presentations, Excel workbooks, and Apple Pages files alongside each note.</p>
-                </article>
-                <article>
-                    <h3>Share when you are ready</h3>
-                    <p>Your notes stay private until you publish them. Public materials keep attribution while your account identity remains protected.</p>
-                </article>
-            </div>
-            <p class="seo-home-link"><a href="/study-notes.html">Learn more about finding and sharing study notes on StudyGrounds →</a></p>
-        </section>
+
     </main>
 
     <input id="note-upload-input" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.pptx,.xlsx,.pages" hidden>

@@ -76,6 +76,22 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  PreferencesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-preferences", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
   SavedNotesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -327,6 +343,74 @@ Resources:
               audience:
                 - !Ref CognitoAppClientId
         DefaultAuthorizer: CognitoJwtAuthorizer
+
+  FeaturedNoteFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/featured/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          PREFERENCES_TABLE: !Ref PreferencesTable
+          ADMIN_EMAILS: !Ref AdminEmails
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PreferencesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref NotesTable
+        - Statement:
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub "${NotesTable.Arn}/index/NoteIdIndex"
+      Events:
+        PublicFeatured:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/featured-note
+            Method: GET
+            PayloadFormatVersion: "2.0"
+            Auth: { Authorizer: NONE }
+        GetFeaturedDismissal:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/featured-note/dismissal
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        SetFeaturedDismissal:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/featured-note/dismissal
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+        RestoreFeatured:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/featured-note/dismissal
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
+        AdminFeature:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/featured-note
+            Method: PUT
+            PayloadFormatVersion: "2.0"
+        AdminUnfeature:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/featured-note
+            Method: DELETE
+            PayloadFormatVersion: "2.0"
 
   MeFunction:
     Type: AWS::Serverless::Function

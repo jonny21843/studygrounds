@@ -309,7 +309,7 @@ const notesState = {
     notes: [],
     uploadNoteId: null,
     editingNoteId: null,
-    activeView: "my-notes",
+    activeView: "home",
     uploadInProgress: false,
     createInProgress: false,
     scanRefreshTimer: null,
@@ -490,6 +490,7 @@ async function saveSettingsProfile(event) {
 function setActiveView(view) {
     if (view !== "explore") exitPublicReaderFocus();
     notesState.activeView = view;
+    document.getElementById("home-view").hidden = view !== "home";
     document.getElementById("my-notes-view").hidden = view !== "my-notes";
     document.getElementById("explore-view").hidden = view !== "explore";
     document.getElementById("saved-notes-view").hidden = view !== "saved-notes";
@@ -498,6 +499,7 @@ function setActiveView(view) {
     document.getElementById("analytics-view").hidden = view !== "analytics";
     document.getElementById("security-view").hidden = view !== "security";
     document.getElementById("moderation-view").hidden = view !== "moderation";
+    document.getElementById("home-tab").classList.toggle("active", view === "home");
     document.getElementById("my-notes-tab").classList.toggle("active", view === "my-notes");
     document.getElementById("explore-tab").classList.toggle("active", view === "explore");
     document.getElementById("saved-notes-tab").classList.toggle("active", view === "saved-notes");
@@ -506,13 +508,15 @@ function setActiveView(view) {
     document.getElementById("analytics-tab").classList.toggle("active", view === "analytics");
     document.getElementById("security-tab").classList.toggle("active", view === "security");
     document.getElementById("moderation-tab").classList.toggle("active", view === "moderation");
-    ["my-notes", "explore", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].forEach((name) => {
+    ["home", "my-notes", "explore", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].forEach((name) => {
         const button = document.getElementById(`${name}-tab`);
         if (name === view) button.setAttribute("aria-current", "page");
         else button.removeAttribute("aria-current");
     });
 
-    if (view === "explore") {
+    if (view === "home") {
+        loadFeaturedHome();
+    } else if (view === "explore") {
         return loadPublicNotes();
     } else if (view === "saved-notes") {
         loadSavedNotes();
@@ -590,8 +594,12 @@ function renderSignedInState() {
     securityTab.hidden = !signedIn || !isConfiguredAdmin();
     moderationTab.hidden = !signedIn || !isConfiguredAdmin();
 
+    document.getElementById("home-create").hidden = !signedIn;
+    document.getElementById("home-study-card").hidden = !signedIn;
+    document.getElementById("home-sign-in").hidden = signedIn;
+    document.getElementById("home-welcome").textContent = signedIn ? "Welcome back to StudyGrounds" : "Welcome to StudyGrounds";
     if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].includes(notesState.activeView)) {
-        setActiveView("explore");
+        setActiveView("home");
     }
 }
 
@@ -3855,6 +3863,7 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
                         <span id="save-public-feedback" class="status-text" role="status" aria-live="polite"></span>
                     </div>
                     <button id="share-public-note" class="button button-secondary" type="button">Copy Share Link</button>
+                    ${notesState.isAdmin ? '<button id="feature-public-note" type="button" class="button button-secondary">Feature on Home</button>' : ""}
                     ${canReportNote ? `
                         <button
                             id="report-note-trigger"
@@ -3990,6 +3999,25 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
             openPublicContributor(note.contributorId);
         });
         document.getElementById("share-public-note")?.addEventListener("click", (event) => sharePublicNote(noteId, note.title, event));
+        const featureButton = document.getElementById("feature-public-note");
+        if (featureButton) {
+            featureButton.textContent = featuredHomeNoteId === noteId ? "Remove from Home" : "Feature on Home";
+            featureButton.addEventListener("click", async () => {
+                featureButton.disabled = true;
+                try {
+                    const remove = featuredHomeNoteId === noteId;
+                    const options = remove ? {method:"DELETE"} : {method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({noteId})};
+                    const response = await adminFetch("/api/admin/featured-note", options);
+                    const data = await response.json();
+                    if (!response.ok) throw new Error(data.error || "Unable to change featured note.");
+                    await loadFeaturedHome();
+                    featureButton.textContent = featuredHomeNoteId === noteId ? "Remove from Home" : "Feature on Home";
+                    showAppNotice(remove ? "Featured note removed." : "Note featured on Home.", "success");
+                } catch(error) { showAppNotice(error.message, "error"); }
+                finally {featureButton.disabled = false;}
+            });
+        }
+
         document.getElementById("report-note-trigger")?.addEventListener("click", openReportNoteModal);
         document.getElementById("report-note-submit")?.addEventListener("click", () => submitPublicNoteReport(noteId));
         document.getElementById("report-note-close")?.addEventListener("click", closeReportNoteModal);
@@ -4022,6 +4050,51 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
     }
 }
 
+let featuredHomeNoteId = null;
+let featuredHomeVersion = 0;
+async function loadFeaturedHome() {
+    const version = ++featuredHomeVersion;
+    const featured = document.getElementById("home-featured");
+    const hidden = document.getElementById("home-featured-hidden");
+    const restore = document.getElementById("settings-restore-featured");
+    const status = document.getElementById("home-featured-status");
+    featured.hidden = true; hidden.hidden = true; restore.disabled = true; status.textContent = "";
+    featuredHomeNoteId = null;
+    try {
+        const response = await fetch(apiUrl("/api/featured-note"));
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to load featured note.");
+        if (version !== featuredHomeVersion || !data.note) return;
+        const note = data.note;
+        featuredHomeNoteId = note.noteId;
+        let dismissed = false;
+        if (isAuthenticated()) {
+            const r = await authenticatedFetch("/api/featured-note/dismissal");
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || "Unable to load preference.");
+            if (version !== featuredHomeVersion) return;
+            dismissed = d.noteId === note.noteId && !!d.dismissed;
+        }
+        document.getElementById("home-featured-title").textContent = note.title || "Featured study note";
+        document.getElementById("home-featured-description").textContent = note.description || "";
+        document.getElementById("home-featured-hide").hidden = !isAuthenticated();
+        featured.hidden = dismissed; hidden.hidden = !dismissed; restore.disabled = !dismissed;
+    } catch (error) {
+        if (version === featuredHomeVersion) status.textContent = error.message || "Featured note unavailable.";
+    }
+}
+async function changeFeaturedDismissal(hide) {
+    if (!featuredHomeNoteId || !isAuthenticated()) return;
+    const previous = featuredHomeNoteId;
+    try {
+        const response = await authenticatedFetch("/api/featured-note/dismissal", {method:hide ? "PUT" : "DELETE"});
+        const data = await response.json();
+        if (!response.ok || data.noteId !== previous) throw new Error(data.error || "Featured note changed. Retry.");
+        await loadFeaturedHome();
+        showAppNotice(hide ? "Featured note hidden." : "Featured note restored.", "success");
+    } catch(error) { showAppNotice(error.message || "Unable to update preference.", "error"); }
+}
+
 window.addEventListener("focus", () => {
     if (!isAuthenticated()) {
         if (getAccessToken() || sessionStorage.getItem("id_token")) expireLocalSession();
@@ -4031,6 +4104,7 @@ window.addEventListener("focus", () => {
     if (notesState.activeView === "my-notes") loadNotes();
     if (notesState.activeView === "saved-notes") loadSavedNotes();
     if (notesState.activeView === "study-history") loadStudyDashboard();
+    if (notesState.activeView === "home") loadFeaturedHome();
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -4038,6 +4112,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadPublicTaxonomy();
 
     document.getElementById("hero-sign-in-btn").addEventListener("click", signIn);
+    document.getElementById("home-tab").addEventListener("click", () => setActiveView("home"));
+    document.getElementById("home-explore").addEventListener("click", () => setActiveView("explore"));
+    document.getElementById("home-sign-in").addEventListener("click", signIn);
+    document.getElementById("home-history").addEventListener("click", () => setActiveView("study-history"));
+    document.getElementById("home-saved").addEventListener("click", () => setActiveView("saved-notes"));
+    document.getElementById("home-create").addEventListener("click", () => {setActiveView("my-notes"); document.getElementById("new-note-btn").click();});
+    document.getElementById("home-featured-open").addEventListener("click", () => {if (featuredHomeNoteId) {setActiveView("explore"); openPublicNote(featuredHomeNoteId);}});
+    document.getElementById("home-featured-hide").addEventListener("click", () => changeFeaturedDismissal(true));
+    document.getElementById("home-featured-restore").addEventListener("click", () => changeFeaturedDismissal(false));
+    document.getElementById("settings-restore-featured").addEventListener("click", () => changeFeaturedDismissal(false));
+
     document.getElementById("my-notes-tab").addEventListener("click", () => setActiveView("my-notes"));
     document.getElementById("saved-notes-tab").addEventListener("click", () => setActiveView("saved-notes"));
     document.getElementById("study-history-tab").addEventListener("click", () => setActiveView("study-history"));
@@ -4180,12 +4265,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         await probeAdminAccess();
         await loadNotes();
     }
+    await loadFeaturedHome();
 
     const sharedParams = new URL(window.location.href).searchParams;
     const sharedNoteId = sharedParams.get("note");
     const sharedContributorId = sharedParams.get("contributor");
     if (sharedNoteId || sharedContributorId) {
         notesState.activeView = "explore";
+        document.getElementById("home-view").hidden = true;
+        document.getElementById("home-tab").classList.remove("active");
+        document.getElementById("home-tab").removeAttribute("aria-current");
         document.getElementById("my-notes-view").hidden = true;
         document.getElementById("settings-view").hidden = true;
         document.getElementById("analytics-view").hidden = true;
