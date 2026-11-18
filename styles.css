@@ -3268,3 +3268,17 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
     color: #3440a5;
 }
 .admin-section-button:focus-visible { outline: 3px solid #4655d6; outline-offset: 2px; }
+
+/* Compact personalized Home cards */
+.home-personalized { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+.home-personalized[hidden] { display:none; }
+.home-dashboard-card { min-width:0; }
+.home-section-heading { display:flex; align-items:center; justify-content:space-between; gap:.7rem; flex-wrap:wrap; }
+.home-section-heading h3 { margin:0; }
+.home-note-list { display:grid; margin-top:.8rem; }
+.home-note-item { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.7rem; border-top:1px solid #eaecf0; padding:.8rem 0; }
+.home-note-details { min-width:0; flex:1 1 170px; }
+.home-note-details h4 { overflow-wrap:anywhere; margin:0 0 .3rem; }
+.home-note-details p { font-size:.875rem; margin:0; }
+.home-ranking-explanation { color:#667085; font-size:.85rem; margin:.5rem 0; }
+@media (max-width:760px) { .home-personalized { grid-template-columns:1fr; } }

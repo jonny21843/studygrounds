@@ -311,6 +311,8 @@ const notesState = {
     editingNoteId: null,
     activeView: "home",
     lastAdminView: "analytics",
+    navigationVersion: 0,
+    homeLoadVersion: 0,
     uploadInProgress: false,
     createInProgress: false,
     scanRefreshTimer: null,
@@ -489,14 +491,18 @@ async function saveSettingsProfile(event) {
 }
 
 const ADMIN_VIEWS = ["analytics", "security", "moderation", "feedback-admin"];
+function isCurrentAdminView(view, version) {
+    return notesState.activeView === view && notesState.navigationVersion === version;
+}
 
-function setActiveView(view) {
+function setActiveView(view, options = {}) {
     if (ADMIN_VIEWS.includes(view) && (!isAuthenticated() || !notesState.isAdmin || !isConfiguredAdmin())) {
         view = "home";
     }
     if (ADMIN_VIEWS.includes(view)) notesState.lastAdminView = view;
     if (view !== "explore") exitPublicReaderFocus();
     notesState.activeView = view;
+    ++notesState.navigationVersion;
     document.getElementById("home-view").hidden = view !== "home";
     document.getElementById("my-notes-view").hidden = view !== "my-notes";
     document.getElementById("explore-view").hidden = view !== "explore";
@@ -533,8 +539,9 @@ function setActiveView(view) {
 
     if (view === "home") {
         loadFeaturedHome();
+        loadHomeDashboard();
     } else if (view === "explore") {
-        return loadPublicNotes();
+        if (!options.skipExploreLoad) return loadPublicNotes();
     } else if (view === "saved-notes") {
         loadSavedNotes();
     } else if (view === "study-history") {
@@ -561,6 +568,8 @@ function expireLocalSession() {
     ++notesState.notesLoadVersion;
     ++notesState.savedLoadVersion;
     ++notesState.studyLoadVersion;
+    ++notesState.homeLoadVersion;
+    ++notesState.navigationVersion;
     notesState.studyDashboard = null;
     notesState.studyActiveSession = null;
     document.getElementById("study-continue-list")?.replaceChildren();
@@ -611,6 +620,7 @@ function renderSignedInState() {
     adminTab.hidden = !signedIn || !notesState.isAdmin || !isConfiguredAdmin();
     feedbackTab.hidden = !signedIn;
 
+    document.getElementById("home-personalized").hidden = !signedIn;
     document.getElementById("home-feedback-card").hidden = !signedIn;
     document.getElementById("home-create").hidden = !signedIn;
     document.getElementById("home-study-card").hidden = !signedIn;
@@ -1964,6 +1974,7 @@ function renderAnalyticsList(elementId, items, emptyText) {
 }
 
 async function loadAdminAnalytics() {
+    const navVersion = notesState.navigationVersion;
     const status = document.getElementById("analytics-status");
     const content = document.getElementById("analytics-content");
     status.hidden = false;
@@ -1980,6 +1991,7 @@ async function loadAdminAnalytics() {
             data = {};
         }
 
+        if (!isCurrentAdminView("analytics", navVersion)) return;
         if (response.status === 403) {
             notesState.isAdmin = false;
             renderSignedInState();
@@ -2213,6 +2225,7 @@ async function applySecurityAction(action) {
 }
 
 async function loadAdminSecurity(hideDetail = true) {
+    const navVersion = notesState.navigationVersion;
     const status = document.getElementById("security-status");
     const content = document.getElementById("security-content");
     status.hidden = false;
@@ -2228,11 +2241,12 @@ async function loadAdminSecurity(hideDetail = true) {
     try {
         const response = await adminFetch("/api/admin/security");
         const data = await response.json();
+        if (!isCurrentAdminView("security", navVersion)) return;
 
         if (response.status === 403) {
             notesState.isAdmin = false;
             renderSignedInState();
-            setActiveView("my-notes");
+            setActiveView("home");
             return;
         }
 
@@ -2250,6 +2264,7 @@ async function loadAdminSecurity(hideDetail = true) {
         status.hidden = true;
         content.hidden = false;
     } catch (error) {
+        if (!isCurrentAdminView("security", navVersion)) return;
         status.textContent = error.message || "Unable to load security records.";
         status.style.color = "#b42318";
     }
@@ -4066,6 +4081,107 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
     }
 }
 
+// Home cards reuse study history, saved notes and public discovery APIs.
+function homeRequestCurrent(version, token) {
+    return notesState.activeView === "home" && version === notesState.homeLoadVersion && token === getAccessToken();
+}
+function homeMessage(container, message) {
+    container.replaceChildren();
+    const p = document.createElement("p");
+    p.className = "note-description";
+    p.textContent = message;
+    container.append(p);
+}
+function homeEntry(note, meta, label, fileId = null) {
+    const item = document.createElement("article");
+    item.className = "home-note-item";
+    const detail = document.createElement("div");
+    detail.className = "home-note-details";
+    const heading = document.createElement("h4");
+    heading.textContent = note.title || "Untitled note";
+    const text = document.createElement("p");
+    text.className = "note-description";
+    text.textContent = meta;
+    detail.append(heading, text);
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "button button-secondary";
+    action.textContent = label;
+    action.addEventListener("click", () => {
+        if (!note.noteId) return;
+        setActiveView("explore", {skipExploreLoad: true});
+        openPublicNote(note.noteId, true, fileId);
+    });
+    item.append(detail, action);
+    return item;
+}
+async function loadHomeDashboard() {
+    const version = ++notesState.homeLoadVersion;
+    const token = getAccessToken();
+    const signedIn = isAuthenticated();
+    const progress = document.getElementById("home-continue-list");
+    const saved = document.getElementById("home-saved-list");
+    const trending = document.getElementById("home-trending-list");
+    if (signedIn) {
+        homeMessage(progress, "Loading study activity...");
+        homeMessage(saved, "Loading saved notes...");
+    } else {
+        progress.replaceChildren();
+        saved.replaceChildren();
+    }
+    homeMessage(trending, "Loading trending notes...");
+    const jobs = [];
+    if (signedIn) {
+        jobs.push((async () => {
+            try {
+                const data = await fetchStudyDashboard();
+                if (!homeRequestCurrent(version, token)) return;
+                const items = (data.continueStudying || []).filter(x => x.available).slice(0, 3);
+                progress.replaceChildren();
+                if (!items.length) return homeMessage(progress, "No recent study activity. Open a note to get started.");
+                for (const x of items) progress.append(homeEntry(x,
+                    [x.subject || "Study material", x.lastOpenedAt ? "Last opened " + friendlyStudyDate(x.lastOpenedAt) : ""].filter(Boolean).join(" · "),
+                    "Resume", x.fileId || null));
+            } catch (error) {
+                if (homeRequestCurrent(version, token)) homeMessage(progress, "Could not load recent study activity.");
+            }
+        })());
+        jobs.push((async () => {
+            try {
+                const response = await authenticatedFetch("/api/saved-notes");
+                const data = await response.json();
+                if (!homeRequestCurrent(version, token)) return;
+                if (!response.ok) throw new Error(data.error || "Saved notes unavailable.");
+                const items = (data.notes || []).filter(x => x.available).slice(0, 3);
+                saved.replaceChildren();
+                if (!items.length) return homeMessage(saved, "Nothing saved yet. Save a public note from Explore.");
+                for (const x of items) saved.append(homeEntry(x,
+                    [x.subject || "Study material", x.savedAt ? "Saved " + formatDate(x.savedAt) : ""].filter(Boolean).join(" · "),
+                    "Open"));
+            } catch (error) {
+                if (homeRequestCurrent(version, token)) homeMessage(saved, "Could not load recently saved notes.");
+            }
+        })());
+    }
+    jobs.push((async () => {
+        try {
+            const response = await fetch(apiUrl("/api/public/notes?sort=trending&page=1&pageSize=3"));
+            const data = await response.json();
+            if (!homeRequestCurrent(version, token)) return;
+            if (!response.ok) throw new Error(data.error || "Trending notes unavailable.");
+            const items = (data.notes || []).slice(0, 3);
+            trending.replaceChildren();
+            if (!items.length) return homeMessage(trending, "No community notes available yet.");
+            for (const x of items) trending.append(homeEntry(x,
+                [x.subject || "Study material", Number(x.helpfulCount || 0).toLocaleString() + " helpful"].join(" · "),
+                "Read"));
+        } catch (error) {
+            if (homeRequestCurrent(version, token)) homeMessage(trending, "Could not load trending notes.");
+        }
+    })());
+    await Promise.allSettled(jobs);
+}
+
 // Member feedback and administrator triage.
 let feedbackCursor = null;
 let feedbackRequestVersion = 0;
@@ -4217,7 +4333,10 @@ window.addEventListener("focus", () => {
     if (notesState.activeView === "my-notes") loadNotes();
     if (notesState.activeView === "saved-notes") loadSavedNotes();
     if (notesState.activeView === "study-history") loadStudyDashboard();
-    if (notesState.activeView === "home") loadFeaturedHome();
+    if (notesState.activeView === "home") {
+        loadFeaturedHome();
+        loadHomeDashboard();
+    }
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -4230,6 +4349,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("home-sign-in").addEventListener("click", signIn);
     document.getElementById("home-history").addEventListener("click", () => setActiveView("study-history"));
     document.getElementById("home-saved").addEventListener("click", () => setActiveView("saved-notes"));
+    document.getElementById("home-study-all").addEventListener("click", () => setActiveView("study-history"));
+    document.getElementById("home-saved-all").addEventListener("click", () => setActiveView("saved-notes"));
+    document.getElementById("home-trending-all").addEventListener("click", () => {
+        document.getElementById("public-sort").value = "trending";
+        notesState.publicPage = 1;
+        setActiveView("explore");
+    });
     document.getElementById("home-create").addEventListener("click", () => {setActiveView("my-notes"); document.getElementById("new-note-btn").click();});
     document.getElementById("home-featured-open").addEventListener("click", () => {if (featuredHomeNoteId) {setActiveView("explore"); openPublicNote(featuredHomeNoteId);}});
     document.getElementById("home-featured-hide").addEventListener("click", () => changeFeaturedDismissal(true));
@@ -4388,12 +4514,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         await loadNotes();
     }
     await loadFeaturedHome();
+    if (notesState.activeView === "home") loadHomeDashboard();
 
     const sharedParams = new URL(window.location.href).searchParams;
     const sharedNoteId = sharedParams.get("note");
     const sharedContributorId = sharedParams.get("contributor");
     if (sharedNoteId || sharedContributorId) {
-        setActiveView("explore");
+        setActiveView("explore", {skipExploreLoad: true});
         if (sharedNoteId) await openPublicNote(sharedNoteId, false);
         else await openPublicContributor(sharedContributorId, false);
     }
