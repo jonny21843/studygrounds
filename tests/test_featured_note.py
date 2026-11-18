@@ -1,8 +1,7 @@
-import importlib.util,json,os,sys,types,unittest
+import importlib.util,json,os,unittest
 from unittest.mock import MagicMock,patch
 os.environ.update({"NOTES_TABLE":"notes","PREFERENCES_TABLE":"prefs","ADMIN_EMAILS":"admin@example.com"})
-mock_boto=types.SimpleNamespace(resource=lambda _:types.SimpleNamespace(Table=lambda _:MagicMock()))
-with patch.dict(sys.modules,{"boto3":mock_boto}):
+with patch("boto3.resource", return_value=MagicMock()):
     spec=importlib.util.spec_from_file_location("featured","backend/functions/featured/app.py")
     mod=importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
