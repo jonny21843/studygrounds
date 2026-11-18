@@ -499,6 +499,8 @@ function setActiveView(view) {
     document.getElementById("analytics-view").hidden = view !== "analytics";
     document.getElementById("security-view").hidden = view !== "security";
     document.getElementById("moderation-view").hidden = view !== "moderation";
+    document.getElementById("feedback-view").hidden = view !== "feedback";
+    document.getElementById("feedback-admin-view").hidden = view !== "feedback-admin";
     document.getElementById("home-tab").classList.toggle("active", view === "home");
     document.getElementById("my-notes-tab").classList.toggle("active", view === "my-notes");
     document.getElementById("explore-tab").classList.toggle("active", view === "explore");
@@ -508,7 +510,9 @@ function setActiveView(view) {
     document.getElementById("analytics-tab").classList.toggle("active", view === "analytics");
     document.getElementById("security-tab").classList.toggle("active", view === "security");
     document.getElementById("moderation-tab").classList.toggle("active", view === "moderation");
-    ["home", "my-notes", "explore", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].forEach((name) => {
+    document.getElementById("feedback-tab").classList.toggle("active", view === "feedback");
+    document.getElementById("feedback-admin-tab").classList.toggle("active", view === "feedback-admin");
+    ["home", "my-notes", "explore", "saved-notes", "study-history", "settings", "analytics", "security", "moderation", "feedback", "feedback-admin"].forEach((name) => {
         const button = document.getElementById(`${name}-tab`);
         if (name === view) button.setAttribute("aria-current", "page");
         else button.removeAttribute("aria-current");
@@ -528,6 +532,8 @@ function setActiveView(view) {
         loadAdminSecurity();
     } else if (view === "moderation") {
         loadAdminModeration();
+    } else if (view === "feedback-admin") {
+        loadAdminFeedback();
     }
 }
 
@@ -583,6 +589,8 @@ function renderSignedInState() {
     const analyticsTab = document.getElementById("analytics-tab");
     const securityTab = document.getElementById("security-tab");
     const moderationTab = document.getElementById("moderation-tab");
+    const feedbackTab = document.getElementById("feedback-tab");
+    const feedbackAdminTab = document.getElementById("feedback-admin-tab");
 
     signedOutPanel.hidden = signedIn;
     notesApp.hidden = !signedIn;
@@ -593,12 +601,15 @@ function renderSignedInState() {
     analyticsTab.hidden = !signedIn || !isConfiguredAdmin();
     securityTab.hidden = !signedIn || !isConfiguredAdmin();
     moderationTab.hidden = !signedIn || !isConfiguredAdmin();
+    feedbackTab.hidden = !signedIn;
+    feedbackAdminTab.hidden = !signedIn || !isConfiguredAdmin();
 
+    document.getElementById("home-feedback-card").hidden = !signedIn;
     document.getElementById("home-create").hidden = !signedIn;
     document.getElementById("home-study-card").hidden = !signedIn;
     document.getElementById("home-sign-in").hidden = signedIn;
     document.getElementById("home-welcome").textContent = signedIn ? "Welcome back to StudyGrounds" : "Welcome to StudyGrounds";
-    if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "analytics", "security", "moderation"].includes(notesState.activeView)) {
+    if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "analytics", "security", "moderation", "feedback", "feedback-admin"].includes(notesState.activeView)) {
         setActiveView("home");
     }
 }
@@ -4050,6 +4061,103 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
     }
 }
 
+// Member feedback and administrator triage.
+let feedbackCursor = null;
+let feedbackRequestVersion = 0;
+async function sendAppFeedback(event) {
+    event.preventDefault();
+    const button = document.getElementById("feedback-submit");
+    const status = document.getElementById("feedback-status");
+    if (button.disabled) return;
+    button.disabled = true;
+    status.textContent = "Sending feedback...";
+    try {
+        const payload = {
+            category: document.getElementById("feedback-category").value,
+            subject: document.getElementById("feedback-subject").value.trim(),
+            details: document.getElementById("feedback-details").value.trim(),
+            context: document.getElementById("feedback-context").value.trim()
+        };
+        const response = await authenticatedFetch("/api/feedback", {
+            method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to send feedback.");
+        document.getElementById("feedback-form").reset();
+        status.textContent = data.message || "Feedback sent. Thank you!";
+        showAppNotice("Thanks for your feedback!", "success");
+    } catch(error) { status.textContent = error.message || "Unable to send feedback."; }
+    finally { button.disabled = false; }
+}
+async function loadAdminFeedback(append = false) {
+    const version = ++feedbackRequestVersion;
+    const status = document.getElementById("feedback-admin-status");
+    const list = document.getElementById("feedback-admin-items");
+    const more = document.getElementById("feedback-admin-more");
+    if (!append) {feedbackCursor = null; list.replaceChildren();}
+    status.textContent = "Loading feedback...";
+    more.hidden = true;
+    try {
+        const filter = document.getElementById("feedback-admin-filter").value;
+        const qs = new URLSearchParams();
+        if (filter) qs.set("status", filter);
+        if (append && feedbackCursor) qs.set("cursor", feedbackCursor);
+        const response = await adminFetch("/api/admin/feedback" + (qs.size ? "?" + qs.toString() : ""));
+        const data = await response.json();
+        if (version !== feedbackRequestVersion) return;
+        if (!response.ok) throw new Error(data.error || "Unable to load feedback.");
+        const entries = data.feedback || [];
+        for (const item of entries) {
+            const row = document.createElement("article");
+            row.className = "feedback-admin-item";
+            const heading = document.createElement("h3");
+            heading.textContent = item.subject || "Untitled";
+            const meta = document.createElement("p");
+            meta.className = "note-description";
+            meta.textContent = [item.category, item.email || item.userId, item.createdAt ? new Date(item.createdAt).toLocaleString() : ""].filter(Boolean).join(" · ");
+            const details = document.createElement("p");
+            details.className = "feedback-details";
+            details.textContent = item.details || "";
+            row.append(heading, meta, details);
+            if (item.context) {
+                const context = document.createElement("p");
+                context.className = "note-description";
+                context.textContent = "Page/feature: " + item.context;
+                row.append(context);
+            }
+            const select = document.createElement("select");
+            select.setAttribute("aria-label", "Feedback status for " + (item.subject || "untitled feedback"));
+            for (const [value,label] of [["NEW","New"],["IN_REVIEW","In Review"],["RESOLVED","Resolved"]]) {
+                const option = document.createElement("option");
+                option.value = value; option.textContent = label; option.selected = value === item.status;
+                select.append(option);
+            }
+            select.addEventListener("change", async () => {
+                const previous = item.status;
+                select.disabled = true;
+                try {
+                    const r = await adminFetch("/api/admin/feedback/" + encodeURIComponent(item.feedbackId), {
+                        method: "PATCH", headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({status: select.value})
+                    });
+                    const responseData = await r.json();
+                    if (!r.ok) throw new Error(responseData.error || "Unable to update status.");
+                    item.status = select.value;
+                    showAppNotice("Feedback status updated.", "success");
+                } catch(error) {
+                    select.value = previous;
+                    showAppNotice(error.message, "error");
+                } finally {select.disabled = false;}
+            });
+            row.append(select);
+            list.append(row);
+        }
+        feedbackCursor = data.nextCursor || null;
+        more.hidden = !feedbackCursor;
+        status.textContent = entries.length ? "" : (append ? "No more feedback on this page." : "No feedback found.");
+    } catch(error) {if (version === feedbackRequestVersion) status.textContent = error.message || "Unable to load feedback.";}
+}
+
 let featuredHomeNoteId = null;
 let featuredHomeVersion = 0;
 async function loadFeaturedHome() {
@@ -4122,6 +4230,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("home-featured-hide").addEventListener("click", () => changeFeaturedDismissal(true));
     document.getElementById("home-featured-restore").addEventListener("click", () => changeFeaturedDismissal(false));
     document.getElementById("settings-restore-featured").addEventListener("click", () => changeFeaturedDismissal(false));
+    document.getElementById("home-feedback").addEventListener("click", () => setActiveView("feedback"));
+    document.getElementById("settings-feedback").addEventListener("click", () => setActiveView("feedback"));
+    document.getElementById("feedback-tab").addEventListener("click", () => setActiveView("feedback"));
+    document.getElementById("feedback-admin-tab").addEventListener("click", () => setActiveView("feedback-admin"));
+    document.getElementById("feedback-form").addEventListener("submit", sendAppFeedback);
+    document.getElementById("feedback-admin-refresh").addEventListener("click", () => loadAdminFeedback());
+    document.getElementById("feedback-admin-filter").addEventListener("change", () => loadAdminFeedback());
+    document.getElementById("feedback-admin-more").addEventListener("click", () => {if (feedbackCursor) loadAdminFeedback(true);});
 
     document.getElementById("my-notes-tab").addEventListener("click", () => setActiveView("my-notes"));
     document.getElementById("saved-notes-tab").addEventListener("click", () => setActiveView("saved-notes"));
@@ -4279,6 +4395,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("settings-view").hidden = true;
         document.getElementById("analytics-view").hidden = true;
         document.getElementById("security-view").hidden = true;
+        document.getElementById("feedback-view").hidden = true;
+        document.getElementById("feedback-admin-view").hidden = true;
         document.getElementById("explore-view").hidden = false;
         document.getElementById("saved-notes-view").hidden = true;
         document.getElementById("study-history-view").hidden = true;

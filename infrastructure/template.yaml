@@ -76,6 +76,22 @@ Resources:
       SSESpecification:
         SSEEnabled: true
 
+  FeedbackTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-feedback", !Ref "AWS::NoValue"]
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: feedbackId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: feedbackId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
   PreferencesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -343,6 +359,45 @@ Resources:
               audience:
                 - !Ref CognitoAppClientId
         DefaultAuthorizer: CognitoJwtAuthorizer
+
+  FeedbackFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/feedback/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          FEEDBACK_TABLE: !Ref FeedbackTable
+          ADMIN_EMAILS: !Ref AdminEmails
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FeedbackTable
+      Events:
+        SubmitFeedback:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/feedback
+            Method: POST
+            PayloadFormatVersion: "2.0"
+        ListAdminFeedback:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/feedback
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        UpdateAdminFeedback:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/admin/feedback/{feedbackId}
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
 
   FeaturedNoteFunction:
     Type: AWS::Serverless::Function

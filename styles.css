@@ -3227,3 +3227,14 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 .home-actions { display:flex; flex-wrap:wrap; align-items:center; gap:.65rem; margin-top:1rem; }
 .home-featured { border-left:4px solid #2563eb; }
 #home-view .seo-home-section { width:100%; }
+
+
+/* Feedback entry and admin triage */
+.feedback-card { max-width: 760px; }
+#feedback-form { display:grid; gap:.7rem; }
+#feedback-form label { font-weight:600; margin-top:.35rem; }
+#feedback-form input, #feedback-form select, #feedback-form textarea { width:100%; max-width:100%; }
+.feedback-admin-item { padding:1rem 0; border-bottom:1px solid rgba(127,127,127,.25); }
+.feedback-admin-item h3 { margin:0 0 .35rem; }
+.feedback-admin-item select { width:auto; min-width:160px; margin-top:.5rem; }
+.feedback-details { white-space:pre-wrap; overflow-wrap:anywhere; }

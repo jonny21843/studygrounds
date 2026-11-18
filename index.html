@@ -51,6 +51,8 @@
             <button id="analytics-tab" class="nav-button" type="button" hidden>Analytics</button>
             <button id="security-tab" class="nav-button" type="button" hidden>Security</button>
             <button id="moderation-tab" class="nav-button" type="button" hidden>Moderation</button>
+            <button id="feedback-tab" class="nav-button" type="button" hidden>Feedback</button>
+            <button id="feedback-admin-tab" class="nav-button" type="button" hidden>User Feedback</button>
         </nav>
 
         <section id="home-view" aria-label="StudyGrounds Home">
@@ -75,6 +77,7 @@
                 <button id="home-history" class="button button-secondary" type="button">Continue Studying</button>
                 <button id="home-saved" class="button button-secondary" type="button">Saved Notes</button>
             </div></section></div>
+            <section id="home-feedback-card" class="card" hidden><h3>Help shape StudyGrounds</h3><p>Have an idea or found an issue? Tell us about it.</p><button id="home-feedback" type="button" class="button button-secondary">Give Feedback</button></section>
         <section class="seo-home-section" aria-labelledby="seo-home-title">
             <p class="eyebrow">Built for learning</p>
             <h2 id="seo-home-title">Find study notes across the subjects you care about.</h2>
@@ -460,6 +463,48 @@
             </section>
         </section>
 
+        <section id="feedback-view" hidden>
+            <div class="dashboard-toolbar"><div>
+                <p class="eyebrow">Help improve StudyGrounds</p>
+                <h2>Send Feedback</h2><p class="subtitle">Report a problem or suggest an improvement. Our team reviews every submission.</p>
+            </div></div>
+            <section class="card feedback-card">
+                <form id="feedback-form">
+                    <label for="feedback-category">Feedback type</label>
+                    <select id="feedback-category" required>
+                        <option value="">Choose a type</option>
+                        <option value="bug">Bug Report</option>
+                        <option value="feature">Feature Request</option>
+                        <option value="general">General Feedback</option>
+                        <option value="usability">Usability Suggestion</option>
+                    </select>
+                    <label for="feedback-subject">Subject</label>
+                    <input id="feedback-subject" type="text" minlength="3" maxlength="120" required placeholder="Briefly describe your feedback">
+                    <label for="feedback-details">Details</label>
+                    <textarea id="feedback-details" minlength="10" maxlength="2000" rows="6" required placeholder="What happened or what would you like to see?"></textarea>
+                    <label for="feedback-context">Page or feature (optional)</label>
+                    <input id="feedback-context" type="text" maxlength="250" placeholder="e.g., Explore, Upload, Study History">
+                    <div class="home-actions"><button id="feedback-submit" class="button button-primary" type="submit">Send Feedback</button>
+                        <span id="feedback-status" class="status-text" role="status" aria-live="polite"></span></div>
+                </form>
+            </section>
+        </section>
+        <section id="feedback-admin-view" hidden>
+            <div class="dashboard-toolbar"><div><p class="eyebrow">Admin</p><h2>User Feedback</h2>
+                <p class="subtitle">Review suggestions and bug reports from members.</p></div>
+                <button id="feedback-admin-refresh" class="button button-secondary" type="button">Refresh</button>
+            </div>
+            <section class="card">
+                <label for="feedback-admin-filter">Status</label>
+                <select id="feedback-admin-filter">
+                    <option value="">All statuses</option><option value="NEW">New</option>
+                    <option value="IN_REVIEW">In Review</option><option value="RESOLVED">Resolved</option>
+                </select>
+                <p id="feedback-admin-status" role="status" aria-live="polite" class="status-text"></p>
+                <div id="feedback-admin-items" class="security-history-list"></div>
+                <button id="feedback-admin-more" class="button button-secondary" type="button" hidden>Load More</button>
+            </section>
+        </section>
         <section id="settings-view" hidden>
             <div class="dashboard-toolbar">
                 <div>
@@ -494,6 +539,7 @@
                 </form>
             </section>
 
+            <section class="card"><h3>Have feedback?</h3><p class="note-description">Report a bug, share an idea, or suggest an improvement.</p><button id="settings-feedback" type="button" class="button button-secondary">Give Feedback</button></section>
             <section class="card"><h3>Featured content</h3><p class="note-description">Restore the current featured note after hiding it.</p><button id="settings-restore-featured" class="button button-secondary" type="button" disabled>Show featured note</button></section>
             <section class="card">
                 <h3>V1 upload limits</h3>
