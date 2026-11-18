@@ -3238,3 +3238,33 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 .feedback-admin-item h3 { margin:0 0 .35rem; }
 .feedback-admin-item select { width:auto; min-width:160px; margin-top:.5rem; }
 .feedback-details { white-space:pre-wrap; overflow-wrap:anywhere; }
+
+/* Keep primary navigation focused; show admin tools only within the Admin workspace. */
+.app-nav { flex-wrap: wrap; }
+.admin-subnav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin: -10px 0 26px;
+    padding: 8px 0 12px;
+    border-bottom: 1px solid #d0d5dd;
+}
+.admin-subnav[hidden] { display: none; }
+.admin-section-button {
+    border: 1px solid transparent;
+    background: transparent;
+    color: #475467;
+    border-radius: 8px;
+    padding: 9px 13px;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+.admin-section-button:hover { background: #f2f4f7; }
+.admin-section-button.active {
+    border-color: #4655d6;
+    background: #eef0ff;
+    color: #3440a5;
+}
+.admin-section-button:focus-visible { outline: 3px solid #4655d6; outline-offset: 2px; }

@@ -310,6 +310,7 @@ const notesState = {
     uploadNoteId: null,
     editingNoteId: null,
     activeView: "home",
+    lastAdminView: "analytics",
     uploadInProgress: false,
     createInProgress: false,
     scanRefreshTimer: null,
@@ -487,7 +488,13 @@ async function saveSettingsProfile(event) {
     }
 }
 
+const ADMIN_VIEWS = ["analytics", "security", "moderation", "feedback-admin"];
+
 function setActiveView(view) {
+    if (ADMIN_VIEWS.includes(view) && (!isAuthenticated() || !notesState.isAdmin || !isConfiguredAdmin())) {
+        view = "home";
+    }
+    if (ADMIN_VIEWS.includes(view)) notesState.lastAdminView = view;
     if (view !== "explore") exitPublicReaderFocus();
     notesState.activeView = view;
     document.getElementById("home-view").hidden = view !== "home";
@@ -501,18 +508,24 @@ function setActiveView(view) {
     document.getElementById("moderation-view").hidden = view !== "moderation";
     document.getElementById("feedback-view").hidden = view !== "feedback";
     document.getElementById("feedback-admin-view").hidden = view !== "feedback-admin";
+    const inAdmin = ADMIN_VIEWS.includes(view);
+    document.getElementById("admin-subnav").hidden = !inAdmin;
+    document.getElementById("admin-tab").classList.toggle("active", inAdmin);
+    if (inAdmin) document.getElementById("admin-tab").setAttribute("aria-current", "page");
+    else document.getElementById("admin-tab").removeAttribute("aria-current");
     document.getElementById("home-tab").classList.toggle("active", view === "home");
     document.getElementById("my-notes-tab").classList.toggle("active", view === "my-notes");
     document.getElementById("explore-tab").classList.toggle("active", view === "explore");
     document.getElementById("saved-notes-tab").classList.toggle("active", view === "saved-notes");
     document.getElementById("study-history-tab").classList.toggle("active", view === "study-history");
     document.getElementById("settings-tab").classList.toggle("active", view === "settings");
-    document.getElementById("analytics-tab").classList.toggle("active", view === "analytics");
-    document.getElementById("security-tab").classList.toggle("active", view === "security");
-    document.getElementById("moderation-tab").classList.toggle("active", view === "moderation");
     document.getElementById("feedback-tab").classList.toggle("active", view === "feedback");
-    document.getElementById("feedback-admin-tab").classList.toggle("active", view === "feedback-admin");
-    ["home", "my-notes", "explore", "saved-notes", "study-history", "settings", "analytics", "security", "moderation", "feedback", "feedback-admin"].forEach((name) => {
+    ADMIN_VIEWS.forEach((name) => {
+        const button = document.getElementById(name + "-tab");
+        button.classList.toggle("active", view === name);
+        button.setAttribute("aria-pressed", String(view === name));
+    });
+    ["home", "my-notes", "explore", "saved-notes", "study-history", "settings", "feedback"].forEach((name) => {
         const button = document.getElementById(`${name}-tab`);
         if (name === view) button.setAttribute("aria-current", "page");
         else button.removeAttribute("aria-current");
@@ -586,11 +599,8 @@ function renderSignedInState() {
     const savedTab = document.getElementById("saved-notes-tab");
     const studyTab = document.getElementById("study-history-tab");
     const settingsTab = document.getElementById("settings-tab");
-    const analyticsTab = document.getElementById("analytics-tab");
-    const securityTab = document.getElementById("security-tab");
-    const moderationTab = document.getElementById("moderation-tab");
+    const adminTab = document.getElementById("admin-tab");
     const feedbackTab = document.getElementById("feedback-tab");
-    const feedbackAdminTab = document.getElementById("feedback-admin-tab");
 
     signedOutPanel.hidden = signedIn;
     notesApp.hidden = !signedIn;
@@ -598,18 +608,15 @@ function renderSignedInState() {
     savedTab.hidden = !signedIn;
     studyTab.hidden = !signedIn;
     settingsTab.hidden = !signedIn;
-    analyticsTab.hidden = !signedIn || !isConfiguredAdmin();
-    securityTab.hidden = !signedIn || !isConfiguredAdmin();
-    moderationTab.hidden = !signedIn || !isConfiguredAdmin();
+    adminTab.hidden = !signedIn || !notesState.isAdmin || !isConfiguredAdmin();
     feedbackTab.hidden = !signedIn;
-    feedbackAdminTab.hidden = !signedIn || !isConfiguredAdmin();
 
     document.getElementById("home-feedback-card").hidden = !signedIn;
     document.getElementById("home-create").hidden = !signedIn;
     document.getElementById("home-study-card").hidden = !signedIn;
     document.getElementById("home-sign-in").hidden = signedIn;
     document.getElementById("home-welcome").textContent = signedIn ? "Welcome back to StudyGrounds" : "Welcome to StudyGrounds";
-    if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "analytics", "security", "moderation", "feedback", "feedback-admin"].includes(notesState.activeView)) {
+    if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "feedback", ...ADMIN_VIEWS].includes(notesState.activeView)) {
         setActiveView("home");
     }
 }
@@ -1919,23 +1926,22 @@ async function setPublished(noteId, published) {
 }
 
 async function probeAdminAccess() {
-    if (!isAuthenticated()) return false;
-
+    if (!isAuthenticated()) {
+        notesState.isAdmin = false;
+        renderSignedInState();
+        return false;
+    }
     try {
         const response = await adminFetch("/api/admin/analytics?probe=1");
-        if (response.status === 403) {
-            notesState.isAdmin = false;
-            document.getElementById("analytics-tab").hidden = true;
-            document.getElementById("security-tab").hidden = true;
-            return false;
-        }
-        if (!response.ok) return false;
-        notesState.isAdmin = true;
-        document.getElementById("analytics-tab").hidden = !isConfiguredAdmin();
-        document.getElementById("security-tab").hidden = !isConfiguredAdmin();
-        return true;
+        notesState.isAdmin = response.ok && isConfiguredAdmin();
+        renderSignedInState();
+        if (!notesState.isAdmin && ADMIN_VIEWS.includes(notesState.activeView)) setActiveView("home");
+        return notesState.isAdmin;
     } catch (error) {
-        console.error("Unable to check admin analytics access:", error);
+        notesState.isAdmin = false;
+        renderSignedInState();
+        if (ADMIN_VIEWS.includes(notesState.activeView)) setActiveView("home");
+        console.error("Unable to check admin access:", error);
         return false;
     }
 }
@@ -1976,8 +1982,8 @@ async function loadAdminAnalytics() {
 
         if (response.status === 403) {
             notesState.isAdmin = false;
-            document.getElementById("analytics-tab").hidden = true;
-            setActiveView("my-notes");
+            renderSignedInState();
+            setActiveView("home");
             return;
         }
         if (!response.ok) {
@@ -2225,8 +2231,7 @@ async function loadAdminSecurity(hideDetail = true) {
 
         if (response.status === 403) {
             notesState.isAdmin = false;
-            document.getElementById("analytics-tab").hidden = true;
-            document.getElementById("security-tab").hidden = true;
+            renderSignedInState();
             setActiveView("my-notes");
             return;
         }
@@ -4234,6 +4239,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("settings-feedback").addEventListener("click", () => setActiveView("feedback"));
     document.getElementById("feedback-tab").addEventListener("click", () => setActiveView("feedback"));
     document.getElementById("feedback-admin-tab").addEventListener("click", () => setActiveView("feedback-admin"));
+    document.getElementById("admin-tab").addEventListener("click", () => setActiveView(notesState.lastAdminView));
     document.getElementById("feedback-form").addEventListener("submit", sendAppFeedback);
     document.getElementById("feedback-admin-refresh").addEventListener("click", () => loadAdminFeedback());
     document.getElementById("feedback-admin-filter").addEventListener("change", () => loadAdminFeedback());
@@ -4387,28 +4393,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const sharedNoteId = sharedParams.get("note");
     const sharedContributorId = sharedParams.get("contributor");
     if (sharedNoteId || sharedContributorId) {
-        notesState.activeView = "explore";
-        document.getElementById("home-view").hidden = true;
-        document.getElementById("home-tab").classList.remove("active");
-        document.getElementById("home-tab").removeAttribute("aria-current");
-        document.getElementById("my-notes-view").hidden = true;
-        document.getElementById("settings-view").hidden = true;
-        document.getElementById("analytics-view").hidden = true;
-        document.getElementById("security-view").hidden = true;
-        document.getElementById("feedback-view").hidden = true;
-        document.getElementById("feedback-admin-view").hidden = true;
-        document.getElementById("explore-view").hidden = false;
-        document.getElementById("saved-notes-view").hidden = true;
-        document.getElementById("study-history-view").hidden = true;
-        document.getElementById("study-history-tab").classList.remove("active");
-        document.getElementById("saved-notes-tab").classList.remove("active");
-        document.getElementById("my-notes-tab").classList.remove("active");
-        document.getElementById("settings-tab").classList.remove("active");
-        document.getElementById("analytics-tab").classList.remove("active");
-        document.getElementById("security-tab").classList.remove("active");
-        document.getElementById("explore-tab").classList.add("active");
-        document.getElementById("my-notes-tab").removeAttribute("aria-current");
-        document.getElementById("explore-tab").setAttribute("aria-current", "page");
+        setActiveView("explore");
         if (sharedNoteId) await openPublicNote(sharedNoteId, false);
         else await openPublicContributor(sharedContributorId, false);
     }
