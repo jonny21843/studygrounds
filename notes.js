@@ -418,6 +418,54 @@ function showProfilePanel(profile) {
             : "Complete your profile before publishing.";
     }
     updateSettingsAvatarPreview();
+    if (notesState.activeView === "settings") loadMyProfileStats();
+}
+
+// Account-only shortcut backed by the existing public contributor endpoint.
+// Only published, non-moderated notes appear in these public contribution totals.
+let myProfileStatsVersion = 0;
+async function loadMyProfileStats() {
+    const version = ++myProfileStatsVersion;
+    const token = getAccessToken();
+    const profile = notesState.profile;
+    const status = document.getElementById("settings-contributions-status");
+    const button = document.getElementById("settings-open-public-profile");
+    const published = document.getElementById("settings-published-total");
+    const helpful = document.getElementById("settings-helpful-total");
+    const subjects = document.getElementById("settings-subjects-total");
+    button.disabled = true;
+    published.textContent = helpful.textContent = subjects.textContent = "—";
+    if (!isAuthenticated() || !profile?.contributorId) {
+        status.textContent = "Complete your profile to view your contribution summary.";
+        return;
+    }
+    status.textContent = "Loading published contributions...";
+    try {
+        const response = await fetch(apiUrl("/api/public/contributors/" + encodeURIComponent(profile.contributorId)));
+        const data = await response.json();
+        if (version !== myProfileStatsVersion || token !== getAccessToken() || notesState.activeView !== "settings") return;
+        if (response.status === 404) {
+            published.textContent = helpful.textContent = subjects.textContent = "0";
+            status.textContent = "Publish your first note to make your contributor profile visible.";
+            return;
+        }
+        if (!response.ok) throw new Error(data.error || "Could not load contribution statistics.");
+        const contributor = data.contributor || {};
+        published.textContent = Number(contributor.contributionCount || 0).toLocaleString();
+        helpful.textContent = Number(contributor.helpfulCount || 0).toLocaleString();
+        subjects.textContent = Number((contributor.subjects || []).length).toLocaleString();
+        status.textContent = "";
+        button.disabled = false;
+    } catch (error) {
+        if (version !== myProfileStatsVersion || token !== getAccessToken() || notesState.activeView !== "settings") return;
+        status.textContent = "Could not load your contributions. Return to Settings to retry.";
+    }
+}
+function openMyPublicProfile() {
+    if (!isAuthenticated() || !notesState.profile?.contributorId) return;
+    const contributorId = notesState.profile.contributorId;
+    setActiveView("explore", {skipExploreLoad: true});
+    openPublicContributor(contributorId);
 }
 
 const PROFILE_AVATAR_STYLES = ["indigo", "emerald", "rose", "amber", "slate", "ocean"];
@@ -619,6 +667,7 @@ function setActiveView(view, options = {}) {
     if (ADMIN_VIEWS.includes(view)) notesState.lastAdminView = view;
     if (notificationsOpen) toggleNotifications(false);
     if (notesState.activeView === "settings" && view !== "settings") {
+        ++myProfileStatsVersion;
         const profileStatus = document.getElementById("settings-profile-status");
         profileStatus.textContent = "";
         profileStatus.className = "status-text";
@@ -665,6 +714,8 @@ function setActiveView(view, options = {}) {
         loadHomeDashboard();
     } else if (view === "explore") {
         if (!options.skipExploreLoad) return loadPublicNotes();
+    } else if (view === "settings") {
+        loadMyProfileStats();
     } else if (view === "saved-notes") {
         loadSavedNotes();
     } else if (view === "study-history") {
@@ -703,6 +754,12 @@ function expireLocalSession() {
     resetNotifications();
     notesState.notes = [];
     notesState.profile = null;
+    ++myProfileStatsVersion;
+    document.getElementById("settings-open-public-profile").disabled = true;
+    ["settings-published-total", "settings-helpful-total", "settings-subjects-total"].forEach(id => {
+        document.getElementById(id).textContent = "—";
+    });
+    document.getElementById("settings-contributions-status").textContent = "";
     notesState.isAdmin = false;
     if (notesState.scanRefreshTimer) {
         window.clearTimeout(notesState.scanRefreshTimer);
@@ -4519,6 +4576,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         setActiveView("explore");
     });
     document.getElementById("settings-tab").addEventListener("click", () => setActiveView("settings"));
+    document.getElementById("settings-open-public-profile").addEventListener("click", openMyPublicProfile);
     ["settings-first-name", "settings-last-name"].forEach(id => {
         document.getElementById(id).addEventListener("input", updateSettingsAvatarPreview);
     });
