@@ -85,6 +85,9 @@ guideCtx.updateWelcomeGuide();
 assert.equal(guideNode.hidden, false, "another account still sees onboarding");
 assert(html.includes('id="home-guide-share"'), "guide must include a share-notes invitation");
 assert(html.includes('id="saved-collection-filter"'), "saved notes must expose collection filtering");
+assert(html.includes('class="publish-guidelines"'), "publishing guidelines must be visible when creating notes");
+assert(source.includes('More from this contributor'), "reader should offer a direct contributor discovery shortcut");
+assert(source.includes('note.savedCollection'), "saved collection UI must not overwrite note topics");
 
 const avatarPreview = {className: "", textContent: ""};
 const avatarName = {textContent: ""};
