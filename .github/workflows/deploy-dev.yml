@@ -191,6 +191,17 @@ jobs:
             --content-type "text/html" \
             --cache-control "no-cache,no-store,must-revalidate"
 
+      - name: Publish legal HTML without caching
+        shell: bash
+        run: |
+          set -euo pipefail
+          bucket="studygrounds-frontend-frontendbucket-5jnigqnmskgt"
+          for page in terms.html privacy.html community-guidelines.html; do
+            aws s3 cp "dist/$page" "s3://$bucket/$page" \
+              --content-type "text/html; charset=utf-8" \
+              --cache-control "no-cache,no-store,must-revalidate"
+          done
+
       - name: Verify published DEV frontend assets
         shell: bash
         run: |
