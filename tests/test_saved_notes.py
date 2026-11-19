@@ -61,6 +61,8 @@ class SavedNotesTests(TestCase):
             "pathParameters": {"noteId": note_id} if note_id is not None else None,
             "queryStringParameters": params,
         }
+        if params is not None and method == "PATCH":
+            event["body"] = json.dumps(params)
         result = self.api.lambda_handler(event, None)
         return result["statusCode"], json.loads(result["body"])
 
@@ -109,7 +111,7 @@ class SavedNotesTests(TestCase):
         code, data = self.call("GET")
         self.assertEqual(code, 200)
         self.assertEqual(data["notes"][0], {
-            "noteId": NOTE, "available": False, "savedAt": "2026-11-16"
+            "noteId": NOTE, "available": False, "savedAt": "2026-11-16", "collection": ""
         })
         self.assertNotIn("title", json.dumps(data))
         self.assertNotIn("userId", json.dumps(data))
@@ -122,6 +124,33 @@ class SavedNotesTests(TestCase):
         encoded = self.api.encode_cursor(key)
         self.assertEqual(self.api.decode_cursor(encoded, "bob")["userId"], "bob")
         self.assertEqual(self.call("GET", params={"cursor": "invalid!!!"})[0], 400)
+
+    def test_bookmark_collections_are_private_and_validated(self):
+        code, data = self.call("PATCH", NOTE, owner="bob", params={"collection": "AWS Certifications"})
+        self.assertEqual(code, 200)
+        self.assertEqual(data["collection"], "AWS Certifications")
+        args = self.saved_table.update_item.call_args.kwargs
+        self.assertEqual(args["Key"], {"userId": "bob", "noteId": NOTE})
+        self.assertIn("attribute_exists", args["ConditionExpression"])
+        self.assertEqual(args["ExpressionAttributeValues"][":name"], "AWS Certifications")
+        for name in ("x" * 61, "bad\nname", 42):
+            self.assertEqual(self.call("PATCH", NOTE, params={"collection": name})[0], 400)
+        self.saved_table.update_item.side_effect = ConditionFailed()
+        self.assertEqual(self.call("PATCH", NOTE, params={"collection": "School"})[0], 404)
+
+    def test_collections_return_with_live_and_unavailable_bookmarks(self):
+        self.saved_table.query.return_value = {"Items": [
+            {"userId": "alice", "noteId": NOTE, "noteOwnerId": "author",
+             "savedAt": "2026-11-16", "collection": "Cloud"}
+        ]}
+        code, body = self.call("GET")
+        self.assertEqual(code, 200)
+        self.assertEqual(body["notes"][0]["collection"], "Cloud")
+        self.notes_table.get_item.return_value = {"Item": self.note("private")}
+        code, body = self.call("GET")
+        self.assertEqual(body["notes"][0]["collection"], "Cloud")
+        self.assertFalse(body["notes"][0]["available"])
+        self.assertNotIn("title", json.dumps(body))
 
     def test_invalid_ids_and_missing_identity(self):
         self.assertEqual(self.call("PUT", "../secret")[0], 400)
