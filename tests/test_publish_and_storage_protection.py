@@ -110,6 +110,12 @@ class PublicationProtectionTests(TestCase):
         self.assertEqual(json.loads(result["body"])["code"], "DAILY_PUBLISH_LIMIT")
         self.tables["notes"].update_item.assert_not_called()
 
+    def test_concurrent_publish_conflict_returns_409(self):
+        self.tables["notes"].update_item.side_effect = condition_failed()
+        response = self.app.lambda_handler(publish_event(), None)
+        self.assertEqual(response["statusCode"], 409)
+        self.assertEqual(json.loads(response["body"])["code"], "PUBLISH_CONFLICT")
+
     def test_moderation_still_blocks_before_quota(self):
         self.tables["notes"].get_item.return_value = {"Item": note(moderationHold=True)}
         self.assertEqual(self.app.lambda_handler(publish_event(), None)["statusCode"], 423)
