@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 import json
 import os
 import uuid
@@ -427,6 +428,9 @@ def handle_action(event, user_id):
 
 
 def lambda_handler(event, context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     if not is_admin(event):
         return response(403, {"error": "Admin access required"})
 
