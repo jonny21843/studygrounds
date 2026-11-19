@@ -58,6 +58,9 @@ jobs:
       - name: Stage shared Lambda legal guard
         run: python scripts/stage_legal_guard.py
 
+      - name: Build versioned legal fingerprints
+        run: python scripts/build_legal_manifest.py
+
       - name: Python compilation
         run: python -m compileall -q backend tests
 

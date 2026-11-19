@@ -8,3 +8,7 @@
 - Designated-agent registration: Active, operator-confirmed. Maintain and renew the designation when required. Under 17 U.S.C. 512(c)(2), publicly provide the designated agent's name, mailing address, telephone number and email address on the service. Email alone is insufficient. The operator prefers not to show their personal name on /copyright.html; explore amending the registered agent name to a permitted role/position, such as Copyright Manager, and update public website details consistently with the filing. Do not invent any address or phone number.
 - Preserve dated historical policy copies and review/version changes before main promotion. Terms v1.1 is still draft.
 - The existing moderation UI is not a complete DMCA case-management implementation; do not claim legal compliance from this draft page alone.
+
+- Account deletion adds a durable background worker and pending-write protection. Test failure and DLQ recovery in DEV before production.
+- Signup shows a 13+ self-attestation before the StudyGrounds-controlled Cognito signup link. **Direct Cognito-hosted signup can bypass this website gate**; true pre-registration enforcement requires a tested Cognito-side design and must remain a release blocker for under-13 data collection risk.
+- Policy v1.2 is identified by SHA-256 of actual shipped HTML. Draft language and any unverified retention promises remain subject to owner/legal signoff.
