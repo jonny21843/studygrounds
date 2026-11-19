@@ -46,7 +46,11 @@ class NotificationApiTests(unittest.TestCase):
         self.assertEqual(body["unreadCount"], 1)
         self.assertEqual(body["notifications"][0]["message"], "Removed")
         self.assertNotIn("recipient", json.dumps(body))
-        self.assertIn("USER#recipient", str(self.table.query.call_args.kwargs["KeyConditionExpression"]))
+        condition = self.table.query.call_args.kwargs["KeyConditionExpression"]
+        self.assertEqual(
+            condition.get_expression()["values"][0].get_expression()["values"][1],
+            "USER#recipient",
+        )
 
     def test_read_is_scoped_to_authenticated_user(self):
         response = self.api.lambda_handler(self.event("PATCH", {"id":"HELPFUL#a#opaque"}), None)
