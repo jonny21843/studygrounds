@@ -32,11 +32,12 @@ function showLegalGate(message = "") {
                 <label><input id="legal-agree" type="checkbox" required> I have read and agree to the Terms of Use.</label>
                 <label><input id="legal-privacy" type="checkbox" required> I acknowledge the Privacy Policy.</label>
                 <p id="legal-gate-message" role="alert" class="status-text"></p>
-                <div class="home-actions"><button class="button button-primary" type="submit">Accept and Continue</button><button id="legal-signout" type="button" class="button button-secondary">Sign Out</button></div>
+                <div class="home-actions"><button class="button button-primary" type="submit">Accept and Continue</button><button id="legal-retry" type="button" class="button button-secondary" hidden>Retry Check</button><button id="legal-signout" type="button" class="button button-secondary">Sign Out</button></div>
             </form>
         </section>`;
         document.body.append(gate);
         gate.querySelector("#legal-signout").addEventListener("click", signOut);
+        gate.querySelector("#legal-retry").addEventListener("click", () => { window.location.reload(); });
         gate.querySelector("#legal-accept-form").addEventListener("submit", async event => {
             event.preventDefault();
             const button = gate.querySelector('[type="submit"]');
@@ -66,6 +67,8 @@ function showLegalGate(message = "") {
         gate.querySelector("#legal-privacy-version").textContent = legalStatus.documents.privacy.version;
     }
     gate.querySelector("#legal-gate-message").textContent = message;
+    gate.querySelector('[type="submit"]').disabled = !legalStatus;
+    gate.querySelector("#legal-retry").hidden = Boolean(legalStatus);
     gate.querySelector("#legal-agree").focus();
 }
 async function ensureLegalAcceptance() {
