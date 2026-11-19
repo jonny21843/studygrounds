@@ -33,6 +33,7 @@ class ManualNoteLanguageTests(unittest.TestCase):
     def setUp(self):
         self.create, self.creation_table = module("backend/functions/notes/create/app.py")
         self.update, self.update_table = module("backend/functions/notes/update/app.py")
+        self.update_table.update_item.return_value = {"Attributes": {"noteId": "note-1"}}
         self.base = {
             "title": "My Notes", "subject": "History", "collection": "Europe",
             "description": "Some material",
