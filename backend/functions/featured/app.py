@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 import json,os,re
 from datetime import datetime,timezone
 import boto3
@@ -29,6 +30,9 @@ def available(note_id):
     if not any(f.get("malwareScanStatus") in (None,"NO_THREATS_FOUND") for f in n.get("files") or []):return None
     return n
 def lambda_handler(event,context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     path=(event.get("rawPath") or "").rstrip("/")
     method=((event.get("requestContext") or {}).get("http") or {}).get("method","").upper()
     if path=="/api/featured-note" and method=="GET":
