@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend" / "layers" / "legal" / "python"))
 from legal_guard import require_legal_acceptance
 
-ENV = {"LEGAL_PREFERENCES_TABLE": "test-prefs", "LEGAL_TERMS_VERSION": "1.0", "LEGAL_PRIVACY_VERSION": "1.0", "PREFERENCES_TABLE": "test-prefs"}
+ENV = {"LEGAL_PREFERENCES_TABLE": "test-prefs", "LEGAL_TERMS_VERSION": "1.0", "LEGAL_PRIVACY_VERSION": "1.0", "PREFERENCES_TABLE": "test-prefs", "LEGAL_ENFORCEMENT_ENABLED": "true"}
 
 def request(method="POST", sub="user-123", body=None):
     event = {"requestContext": {"http": {"method": method}, "authorizer": {"jwt": {"claims": {"sub": sub}}}}}
