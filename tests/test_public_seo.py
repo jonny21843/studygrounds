@@ -54,6 +54,14 @@ class PublicSeoTests(unittest.TestCase):
         self.assertNotIn("X-Robots-Tag", response["headers"])
         self.assertTrue(self.mod.table.get_item.call_args.kwargs["ConsistentRead"])
 
+    def test_selected_language_in_public_note_seo(self):
+        self.mod.table.query.return_value = {"Items": [{"userId": "owner"}]}
+        self.mod.table.get_item.return_value = {"Item": {**note(), "language": "es"}}
+        response = self.mod.lambda_handler(self.route(), None)
+        self.assertEqual(response["statusCode"], 200)
+        self.assertIn('<html lang="es">', response["body"])
+        self.assertIn('"inLanguage": "es"', response["body"])
+
     def test_no_private_moderated_or_unsafe_pages(self):
         self.mod.table.query.return_value = {"Items": [{"userId": "owner"}]}
         for record in (

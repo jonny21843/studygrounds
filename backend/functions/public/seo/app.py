@@ -83,6 +83,9 @@ def note_html(note):
     subject = (note.get("subject") or "").strip()
     topic = (note.get("collection") or "").strip()
     author = note.get("publicAuthor") or "Community member"
+    language = note.get("language") or "und"
+    supported = {"en", "es", "fr", "de", "pt", "it", "ja", "zh", "ko", "ar", "hi"}
+    page_language = language if language in supported else "en"
     published = note.get("publishedAt") or ""
     canonical = site_url + canonical_path(note)
     interactive = f"{site_url}/?note={quote(note.get('noteId') or '')}"
@@ -98,6 +101,8 @@ def note_html(note):
         "isAccessibleForFree": True,
         "learningResourceType": "Study notes",
     }
+    if language in supported:
+        structured["inLanguage"] = language
     if subject:
         structured["about"] = subject
     if published:
@@ -111,7 +116,7 @@ def note_html(note):
     taxonomy = " · ".join(value for value in [subject, topic] if value)
 
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{html.escape(page_language, quote=True)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">

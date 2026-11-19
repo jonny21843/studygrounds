@@ -75,6 +75,26 @@ class ExploreSearchTests(unittest.TestCase):
         self.table.scan.return_value = {"Items":[safe, private, held, unsafe]}
         self.assertEqual([n["noteId"] for n in self.search("linux")[1]["notes"]], ["safe"])
 
+    def test_filter_by_manual_language_and_legacy_unspecified(self):
+        self.table.scan.return_value = {"Items": [
+            make_note("en", "English study", language="en"),
+            make_note("es", "Estudio español", language="es"),
+            make_note("legacy", "Old notes"),
+            make_note("private", "Private", language="fr", visibility="private"),
+            make_note("held", "Held", language="de", moderationHold=True),
+        ]}
+        def list_for(code):
+            result = self.api.lambda_handler({"queryStringParameters": {"language": code}}, None)
+            return json.loads(result["body"])
+        self.assertEqual([n["noteId"] for n in list_for("es")["notes"]], ["es"])
+        self.assertEqual([n["noteId"] for n in list_for("und")["notes"]], ["legacy"])
+        self.assertEqual(sorted(list_for("")["languages"]), ["en", "es", "und"])
+        self.assertEqual(list_for("es")["notes"][0]["language"], "es")
+        self.assertEqual(
+            self.api.lambda_handler({"queryStringParameters": {"language": "invalid"}}, None)["statusCode"],
+            400,
+        )
+
     def test_sort_validation_and_empty_relevance_fallback(self):
         self.table.scan.return_value = {"Items":[make_note("one", "Linux")]}
         self.assertEqual(self.search("linux", sort="nonsense")[0], 400)
