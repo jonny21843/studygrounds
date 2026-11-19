@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 import json
 from decimal import Decimal
 import os
@@ -153,6 +154,9 @@ def update_publication(**kwargs):
 
 
 def lambda_handler(event, context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     user_id = current_user_id(event)
     username = current_username(event)
 
