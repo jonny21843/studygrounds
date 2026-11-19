@@ -217,6 +217,26 @@
                             </label>
                         </div>
 
+                        <label>
+                            Language of study material
+                            <select id="note-language" aria-label="Language of study material">
+                                <option value="und">Unspecified</option>
+                                    <option value="en">English</option>
+                                    <option value="es">Spanish</option>
+                                    <option value="fr">French</option>
+                                    <option value="de">German</option>
+                                    <option value="pt">Portuguese</option>
+                                    <option value="it">Italian</option>
+                                    <option value="ja">Japanese</option>
+                                    <option value="zh">Chinese</option>
+                                    <option value="ko">Korean</option>
+                                    <option value="ar">Arabic</option>
+                                    <option value="hi">Hindi</option>
+                                    <option value="mul">Multiple languages</option>
+                            </select>
+                            <span class="field-hint">Selected by you, not automatically detected. You can change it later.</span>
+                        </label>
+
                         <label class="description-field">
                             Description
                             <textarea id="note-description" maxlength="1200" rows="5" placeholder="What do these notes cover? Mention important topics, chapters, services, exam objectives, or keywords someone might search for."></textarea>
@@ -303,6 +323,9 @@
                         </select>
                         <select id="public-collection" aria-label="Filter by topic">
                             <option value="">All topics</option>
+                        </select>
+                        <select id="public-language" aria-label="Filter by language">
+                            <option value="">All languages</option>
                         </select>
                         <select id="public-sort" aria-label="Sort public notes">
                             <option value="newest">Newest</option>

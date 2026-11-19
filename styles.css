@@ -3349,3 +3349,7 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 .admin-overview-note { display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:10px 0; border-top:1px solid #e4e7ec; }
 .admin-overview-note small { color:#667085; }
 @media (max-width:680px) { .admin-overview-grid { grid-template-columns:1fr; } }
+
+/* Manual note-language metadata, kept distinct from premium document processing. */
+.note-language-label { display:inline-block; margin-top:7px; padding:3px 9px; border:1px solid #d0d5dd; border-radius:99px; color:#475467; font-size:.78rem; }
+#note-language { width:100%; }

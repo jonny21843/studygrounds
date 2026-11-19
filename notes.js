@@ -916,6 +916,7 @@ function startEditNote(note) {
     document.getElementById("note-title").value = note.title || "";
     document.getElementById("note-subject").value = note.subject || "";
     document.getElementById("note-collection").value = note.collection || "";
+    document.getElementById("note-language").value = NOTE_LANGUAGE_LABELS[note.language] ? note.language : "und";
     document.getElementById("note-description").value = note.description || "";
     document.getElementById("note-form-title").textContent = "Edit note";
     document.getElementById("note-form-submit").textContent = "Save Changes";
@@ -1050,8 +1051,14 @@ function escapeHtml(value) {
         .replaceAll("'", "&#039;");
 }
 
+const NOTE_LANGUAGE_LABELS = {"und":"Unspecified","en":"English","es":"Spanish","fr":"French","de":"German","pt":"Portuguese","it":"Italian","ja":"Japanese","zh":"Chinese","ko":"Korean","ar":"Arabic","hi":"Hindi","mul":"Multiple languages"};
+
+function noteLanguageLabel(code) {
+    return NOTE_LANGUAGE_LABELS[code || "und"] || NOTE_LANGUAGE_LABELS.und;
+}
+
 function noteMeta(note) {
-    return [note.subject, note.collection].filter(Boolean);
+    return [note.subject, note.collection, noteLanguageLabel(note.language)].filter(Boolean);
 }
 
 function fileSecurityLabel(file) {
@@ -1841,6 +1848,7 @@ async function createNote(event) {
     const title = document.getElementById("note-title").value.trim();
     const subject = document.getElementById("note-subject").value.trim();
     const collection = document.getElementById("note-collection").value.trim();
+    const language = document.getElementById("note-language").value;
     const description = document.getElementById("note-description").value.trim();
     const sourceFile = document.getElementById("note-form-source").files?.[0] || null;
     const publishAfterSave = document.getElementById("note-form-publish").checked;
@@ -1875,7 +1883,7 @@ async function createNote(event) {
             {
                 method: editingNoteId ? "PATCH" : "POST",
                 headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({title, subject, collection, description})
+                body: JSON.stringify({title, subject, collection, language, description})
             }
         );
 
@@ -2608,12 +2616,13 @@ async function backToExplore() {
     }
 }
 
-function renderActivePublicFilters(query, subject, collection, sort) {
+function renderActivePublicFilters(query, subject, collection, sort, language = "") {
     const container = document.getElementById("public-active-filters");
     const filters = [
         {name: "query", label: query ? `Search: ${query}` : ""},
         {name: "subject", label: subject ? `Subject: ${subject}` : ""},
         {name: "collection", label: collection ? `Topic: ${collection}` : ""},
+        {name: "language", label: language ? `Language: ${noteLanguageLabel(language)}` : ""},
         {name: "sort", label: sort !== "newest" ? `Sort: ${({relevance:"Best match", oldest:"Oldest", title:"Title A–Z", views:"Most viewed", helpful:"Most helpful", trending:"Trending"})[sort] || sort}` : ""}
     ].filter((filter) => filter.label);
     container.innerHTML = filters.length
@@ -2633,6 +2642,7 @@ function renderActivePublicFilters(query, subject, collection, sort) {
                 refreshExploreTopicFilter();
             }
             if (field === "collection") document.getElementById("public-collection").value = "";
+            if (field === "language") document.getElementById("public-language").value = "";
             if (field === "sort") document.getElementById("public-sort").value = "newest";
             notesState.publicPage = 1;
             loadPublicNotes();
@@ -2647,6 +2657,7 @@ async function loadPublicNotes() {
     const query = document.getElementById("public-search").value.trim();
     const subject = document.getElementById("public-subject").value;
     const collection = document.getElementById("public-collection").value;
+    const language = document.getElementById("public-language").value;
     const sort = document.getElementById("public-sort").value;
     document.getElementById("explore-most-helpful").setAttribute("aria-pressed", String(sort === "helpful"));
     document.getElementById("explore-trending").setAttribute("aria-pressed", String(sort === "trending"));
@@ -2673,6 +2684,7 @@ async function loadPublicNotes() {
         if (query) url.searchParams.set("q", query);
         if (subject) url.searchParams.set("subject", subject);
         if (collection) url.searchParams.set("collection", collection);
+        if (language) url.searchParams.set("language", language);
         if (sort) url.searchParams.set("sort", sort);
         url.searchParams.set("page", String(notesState.publicPage));
         url.searchParams.set("pageSize", String(pageSize));
@@ -2702,6 +2714,13 @@ async function loadPublicNotes() {
 
         refreshExploreTopicFilter();
 
+        const languageSelect = document.getElementById("public-language");
+        const availableLanguages = (data.languages || []).filter(code => NOTE_LANGUAGE_LABELS[code]);
+        const currentLanguage = languageSelect.value;
+        languageSelect.innerHTML = '<option value="">All languages</option>' + availableLanguages
+            .map(code => `<option value="${escapeHtml(code)}">${escapeHtml(noteLanguageLabel(code))}</option>`).join("");
+        languageSelect.value = availableLanguages.includes(currentLanguage) ? currentLanguage : "";
+
         notesState.publicPage = data.page || 1;
         notesState.publicTotalPages = data.totalPages || 1;
         const pagination = document.getElementById("public-pagination");
@@ -2716,7 +2735,7 @@ async function loadPublicNotes() {
             total === 1 ? "1 public note" : `${total.toLocaleString()} public notes`;
         document.getElementById("public-page-summary").textContent =
             total ? `Showing ${startItem.toLocaleString()}–${endItem.toLocaleString()}` : "No matching notes";
-        renderActivePublicFilters(query, subject, collection, sort);
+        renderActivePublicFilters(query, subject, collection, sort, language);
 
         document.getElementById("public-first-page").disabled = notesState.publicPage <= 1;
         document.getElementById("public-prev-page").disabled = notesState.publicPage <= 1;
@@ -2726,7 +2745,7 @@ async function loadPublicNotes() {
         document.getElementById("public-status").hidden = true;
 
         if (!notes.length) {
-            const hasFilters = Boolean(query || subject || collection);
+            const hasFilters = Boolean(query || subject || collection || language);
             grid.innerHTML = `
                 <div class="empty-state">
                     <h3>${hasFilters ? "No notes match these filters" : "No public notes yet"}</h3>
@@ -2743,6 +2762,7 @@ async function loadPublicNotes() {
             card.className = "public-note-card";
             const subjectLabel = note.subject || "General";
             const collectionLabel = note.collection || "";
+            const languageLabel = noteLanguageLabel(note.language);
             const fileCount = Number(note.fileCount || 0);
             const viewCount = Number(note.viewCount || 0);
             const helpfulCount = Number(note.helpfulCount || 0);
@@ -2759,6 +2779,7 @@ async function loadPublicNotes() {
                     <h3><a class="public-note-seo-link" href="${escapeHtml(seoUrl)}">${escapeHtml(note.title || "Untitled note")}</a></h3>
                     ${collectionLabel ? `<button type="button" class="public-note-collection explore-topic-link" data-explore-topic="${escapeHtml(collectionLabel)}" aria-label="Explore topic ${escapeHtml(collectionLabel)}">${escapeHtml(collectionLabel)}</button>` : ""}
                     <p class="public-note-description">${escapeHtml(note.description || "No description provided.")}</p>
+                    <span class="note-language-label">${escapeHtml(languageLabel)}</span>
                 </div>
 
                 <div class="public-note-card-footer">
@@ -4731,6 +4752,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         document.getElementById("public-search").value = "";
         document.getElementById("public-subject").value = "";
         document.getElementById("public-collection").value = "";
+        document.getElementById("public-language").value = "";
         document.getElementById("public-sort").value = "newest";
         document.getElementById("public-page-size").value = "18";
         notesState.publicPageSize = 18;
@@ -4743,6 +4765,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         loadPublicNotes();
     });
     document.getElementById("public-collection").addEventListener("change", () => {
+        notesState.publicPage = 1;
+        loadPublicNotes();
+    });
+    document.getElementById("public-language").addEventListener("change", () => {
         notesState.publicPage = 1;
         loadPublicNotes();
     });
