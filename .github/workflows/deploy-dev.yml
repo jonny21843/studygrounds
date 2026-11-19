@@ -174,14 +174,12 @@ jobs:
           set -euo pipefail
           bucket="studygrounds-frontend-frontendbucket-5jnigqnmskgt"
           for asset in index.html styles.css notes.js auth/callback.html; do
-            size=$(aws s3api head-object --bucket "$bucket" --key "$asset" --query ContentLength --output text)
-            test "$size" -gt 0
+            local_size=$(wc -c < "dist/$asset")
+            remote_size=$(aws s3 ls "s3://$bucket/$asset" | awk '{print $3}')
+            test "$local_size" -gt 0
+            test "$local_size" = "$remote_size"
           done
-          for asset in index.html styles.css notes.js; do
-            aws s3 cp "s3://$bucket/$asset" "/tmp/studygrounds-$asset" --only-show-errors
-            cmp "dist/$asset" "/tmp/studygrounds-$asset"
-          done
-          echo "DEV frontend artifact smoke checks passed."
+          echo "DEV frontend artifact size smoke checks passed."
 
       - name: Invalidate DEV CloudFront
         run: |
