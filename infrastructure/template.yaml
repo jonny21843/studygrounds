@@ -48,7 +48,55 @@ Parameters:
 Conditions:
   UseExplicitResourceNames: !Not [!Equals [!Ref ResourceNamePrefix, ""]]
 
+Globals:
+  Function:
+    Layers:
+      - !Ref LegalGuardLayer
+    Environment:
+      Variables:
+        LEGAL_PREFERENCES_TABLE: !Ref PreferencesTable
+        LEGAL_TERMS_VERSION: "1.0"
+        LEGAL_PRIVACY_VERSION: "1.0"
+
 Resources:
+  LegalGuardLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      ContentUri: ../backend/layers/legal/
+      CompatibleRuntimes:
+        - python3.12
+      Description: Shared legal acceptance guard for authenticated writes
+
+  LegalFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/legal/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          PREFERENCES_TABLE: !Ref PreferencesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PreferencesTable
+      Events:
+        LegalStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/legal/status
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        LegalAccept:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/legal/accept
+            Method: POST
+            PayloadFormatVersion: "2.0"
+
   NotesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -377,6 +425,8 @@ Resources:
           FEEDBACK_TABLE: !Ref FeedbackTable
           ADMIN_EMAILS: !Ref AdminEmails
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref FeedbackTable
       Events:
@@ -417,6 +467,8 @@ Resources:
           PREFERENCES_TABLE: !Ref PreferencesTable
           ADMIN_EMAILS: !Ref AdminEmails
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref PreferencesTable
         - DynamoDBReadPolicy:
@@ -502,6 +554,8 @@ Resources:
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           PREFERENCES_TABLE: !Ref PreferencesTable
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref PreferencesTable
         - Statement:
@@ -575,6 +629,8 @@ Resources:
           ADMIN_EMAILS: !Ref AdminEmails
       Policies:
         - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
+        - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref UserSecurityTable
@@ -623,6 +679,8 @@ Resources:
           PREFERENCES_TABLE: !Ref PreferencesTable
           MAX_DAILY_NOTES: "30"
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBWritePolicy:
             TableName: !Ref NotesTable
         - DynamoDBWritePolicy:
@@ -649,6 +707,8 @@ Resources:
         Variables:
           NOTES_TABLE: !Ref NotesTable
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBWritePolicy:
             TableName: !Ref NotesTable
       Events:
@@ -711,6 +771,8 @@ Resources:
           MAX_DAILY_UPLOAD_REQUESTS: "30"
       Policies:
         - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
+        - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
         - DynamoDBReadPolicy:
             TableName: !Ref UserSecurityTable
@@ -749,6 +811,8 @@ Resources:
           MAX_FILES_PER_NOTE: 10
           MAX_ACCOUNT_STORAGE_BYTES: "1073741824"
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref NotesTable
         - DynamoDBReadPolicy:
@@ -789,6 +853,8 @@ Resources:
           NOTES_TABLE: !Ref NotesTable
           NOTES_BUCKET: !Ref NotesBucket
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref NotesTable
         - S3CrudPolicy:
@@ -816,6 +882,8 @@ Resources:
           NOTES_TABLE: !Ref NotesTable
           NOTES_BUCKET: !Ref NotesBucket
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref NotesTable
         - S3CrudPolicy:
@@ -847,6 +915,8 @@ Resources:
           PREFERENCES_TABLE: !Ref PreferencesTable
           MAX_DAILY_PUBLISH_ACTIONS: "10"
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref NotesTable
         - DynamoDBReadPolicy:
@@ -933,6 +1003,8 @@ Resources:
           MAX_DAILY_REPORTS: "10"
       Policies:
         - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
+        - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ModerationReportsTable
@@ -970,6 +1042,8 @@ Resources:
           ADMIN_EMAILS: !Ref AdminEmails
           PREFERENCES_TABLE: !Ref PreferencesTable
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref NotesTable
         - DynamoDBCrudPolicy:
@@ -1042,6 +1116,8 @@ Resources:
         Variables:
           PREFERENCES_TABLE: !Ref PreferencesTable
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref PreferencesTable
       Events:
@@ -1075,6 +1151,8 @@ Resources:
           HELPFUL_VOTES_TABLE: !Ref HelpfulVotesTable
           PREFERENCES_TABLE: !Ref PreferencesTable
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
         - DynamoDBCrudPolicy:
@@ -1128,6 +1206,8 @@ Resources:
           STUDY_ACTIVITY_TABLE: !Ref StudyActivityTable
           SAVED_NOTES_TABLE: !Ref SavedNotesTable
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref StudyActivityTable
         # Annotation creation also saves the source note, atomically.
@@ -1209,6 +1289,8 @@ Resources:
           NOTES_TABLE: !Ref NotesTable
           SAVED_NOTES_TABLE: !Ref SavedNotesTable
       Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref SavedNotesTable
         - DynamoDBReadPolicy:
