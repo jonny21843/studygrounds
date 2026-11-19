@@ -47,6 +47,7 @@ const ctx = {
     loadPublicNotes:() => {calls.explore++;},
     loadSavedNotes:() => {calls.saved++;},
     loadStudyDashboard:() => {},
+    loadAdminOverview:() => {calls.overview=(calls.overview || 0)+1;},
     loadAdminAnalytics:() => {},
     loadAdminSecurity:() => {},
     loadAdminModeration:() => {},
@@ -80,6 +81,10 @@ assert.equal(avatarPreview.className, "contributor-avatar avatar-emerald");
 assert.equal(avatarPreview.textContent, "J");
 assert.equal(avatarName.textContent, "Jons T.");
 
+ctx.setActiveView("admin-overview");
+assert.equal(state.activeView, "admin-overview", "admin landing overview should be routable");
+assert.equal(calls.overview, 1);
+assert.equal(element("admin-overview-view").hidden, false);
 ctx.setActiveView("analytics");
 const analyticsRequest = state.navigationVersion;
 assert.equal(ctx.isCurrentAdminView("analytics", analyticsRequest), true);
@@ -110,7 +115,7 @@ state.isAdmin = false;
 ctx.setActiveView("security");
 assert.equal(state.activeView, "home", "non-admin cannot enter an admin view");
 
-for (const id of ["settings-open-public-profile","settings-published-total","settings-helpful-total","settings-subjects-total","settings-contributions-status","home-continue-list","home-saved-list","home-trending-list","home-study-all","home-saved-all","home-trending-all"]) {
+for (const id of ["admin-overview-view","admin-overview-tab","refresh-admin-overview","overview-open-reports","overview-new-feedback","settings-open-public-profile","settings-published-total","settings-helpful-total","settings-subjects-total","settings-contributions-status","home-continue-list","home-saved-list","home-trending-list","home-study-all","home-saved-all","home-trending-all"]) {
     assert(html.includes('id="' + id + '"'), "Missing Home dashboard target " + id);
 }
 console.log("Navigation and Home regression assertions passed.");
