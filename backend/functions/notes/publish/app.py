@@ -234,6 +234,7 @@ def lambda_handler(event, context):
                 ),
                 ExpressionAttributeValues={
                     ":private": "private",
+                    ":public": "public",
                     ":pending": True,
                     ":public_author": author_display_name,
                     ":updated": now,
