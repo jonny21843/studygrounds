@@ -72,5 +72,6 @@ To monitor GitHub Actions deployment failures, enable GitHub Actions notificatio
 - Do not merge `main` or deploy production without explicit authorization.
 
 ## Remaining tasks
-- Backend publishing rate limits, per-account storage accounting, error-budget monitoring and frontend performance checks.
+- Make publication reservations transactional/idempotent across concurrent requests, and add atomic per-account storage reservations plus reliable reconciliation for orphaned, replaced, and deleted files. Current safeguards are suitable as a first DEV pass but not strong concurrency-proof enforcement.
+- Error-budget monitoring, front-end performance checks, and administrator override/appeal procedures.
 - Separate self-service data export and permanent account deletion design.
