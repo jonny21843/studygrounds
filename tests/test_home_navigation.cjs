@@ -55,14 +55,14 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext(section('const ADMIN_VIEWS = ', 'function isConfiguredAdmin()'), ctx);
 vm.runInContext(section('function homeRequestCurrent(', 'function homeMessage('), ctx);
-vm.runInContext(section('const PROFILE_AVATAR_STYLES = ', 'async function saveProfile('), {
+const avatarPreview = {className: "", textContent: ""};
+const avatarName = {textContent: ""};
+const avatarContext = vm.createContext({
     ...ctx,
     document: {
         getElementById(id) {
-            if (id === "settings-avatar-example") {
-                return {className: "", textContent: ""};
-            }
-            if (id === "settings-avatar-name") return {textContent: ""};
+            if (id === "settings-avatar-example") return avatarPreview;
+            if (id === "settings-avatar-name") return avatarName;
             if (id === "settings-first-name") return {value: "Jons"};
             if (id === "settings-last-name") return {value: "Test"};
             return element(id);
@@ -70,6 +70,11 @@ vm.runInContext(section('const PROFILE_AVATAR_STYLES = ', 'async function savePr
         querySelector() { return {value: "emerald"}; }
     }
 });
+vm.runInContext(section('const PROFILE_AVATAR_STYLES = ', 'async function saveProfile('), avatarContext);
+avatarContext.updateSettingsAvatarPreview();
+assert.equal(avatarPreview.className, "contributor-avatar avatar-emerald");
+assert.equal(avatarPreview.textContent, "J");
+assert.equal(avatarName.textContent, "Jons T.");
 
 ctx.setActiveView("analytics");
 const analyticsRequest = state.navigationVersion;
