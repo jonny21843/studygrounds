@@ -2,6 +2,8 @@ import json
 import os
 import re
 import uuid
+import logging
+from datetime import datetime, timezone
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -13,6 +15,31 @@ votes = dynamodb.Table(os.environ["HELPFUL_VOTES_TABLE"])
 client = boto3.client("dynamodb")
 NOTES_NAME = os.environ["NOTES_TABLE"]
 VOTES_NAME = os.environ["HELPFUL_VOTES_TABLE"]
+preferences = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
+logger = logging.getLogger(__name__)
+
+
+def notify_helpful(note, voter):
+    # Stable key: re-voting after an unlike never generates another notice.
+    # Do not expose the voter's identity to the note owner.
+    try:
+        preferences.put_item(
+            Item={
+                "pk": "USER#" + note["userId"],
+                "sk": "NOTICE#HELPFUL#" + note["noteId"] + "#" + voter,
+                "type": "helpful",
+                "noteId": note["noteId"],
+                "createdAt": datetime.now(timezone.utc).isoformat(),
+                "message": "Someone marked your note helpful.",
+                "read": False,
+            },
+            ConditionExpression="attribute_not_exists(pk)",
+        )
+    except Exception as error:
+        # A notification must never turn a successfully committed vote into an error.
+        if getattr(error, "response", {}).get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            logger.exception("Could not save helpful notification")
+
 NOTE_ID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 
 
@@ -157,4 +184,6 @@ def lambda_handler(event, context):
     latest = locate_note(note_id)
     if not is_public(latest):
         return response(404, {"error": "Public note unavailable."})
+    if method == "PUT":
+        notify_helpful(latest, voter)
     return response(200, vote_status(latest, voter))

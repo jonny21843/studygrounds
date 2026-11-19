@@ -35,6 +35,19 @@
 
         <div class="auth-bar">
             <span id="auth-status" aria-live="polite">Not signed in</span>
+            <div id="notifications-control" class="notifications-control" hidden>
+                <button id="notifications-toggle" type="button" class="button button-secondary notifications-bell" aria-label="Notifications" aria-expanded="false" aria-controls="notifications-panel">
+                    <span aria-hidden="true">🔔</span><span id="notifications-count" class="notifications-count" hidden>0</span>
+                </button>
+                <section id="notifications-panel" class="notifications-panel" aria-label="Your notifications" hidden>
+                    <div class="notifications-heading">
+                        <h2>Notifications</h2>
+                        <button id="notifications-read-all" class="button button-text" type="button">Mark recent as read</button>
+                    </div>
+                    <p id="notifications-status" role="status" class="status-text"></p>
+                    <div id="notifications-items" class="notifications-items"></div>
+                </section>
+            </div>
             <button id="sign-in-btn" class="button button-primary">Sign In</button>
             <button id="sign-out-btn" class="button button-secondary" hidden>Sign Out</button>
         </div>

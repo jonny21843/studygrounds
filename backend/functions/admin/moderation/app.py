@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -10,6 +11,36 @@ from boto3.dynamodb.conditions import Key
 dynamodb = boto3.resource("dynamodb")
 notes_table = dynamodb.Table(os.environ["NOTES_TABLE"])
 reports_table = dynamodb.Table(os.environ["REPORTS_TABLE"])
+preferences = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
+logger = logging.getLogger(__name__)
+
+
+def notify_moderation(note, report_id, action):
+    if not note or not note.get("userId") or not note.get("noteId"):
+        return
+    reason = "Reported content removed by moderation" if action == "unpublish" else ""
+    message = (
+        "Your note was removed by moderation. Reason: " + reason + "."
+        if action == "unpublish"
+        else "The moderation hold on your note was lifted. Your note remains private until you publish it."
+    )
+    try:
+        preferences.put_item(
+            Item={
+                "pk": "USER#" + note["userId"],
+                "sk": "NOTICE#MODERATION#" + report_id + "#" + action,
+                "type": "moderation" if action == "unpublish" else "restored",
+                "noteId": note["noteId"],
+                "createdAt": datetime.now(timezone.utc).isoformat(),
+                "message": message,
+                "read": False,
+            },
+            ConditionExpression="attribute_not_exists(pk)",
+        )
+    except Exception as error:
+        if getattr(error, "response", {}).get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            logger.exception("Could not save moderation notification")
+
 admin_emails = {
     item.strip().lower()
     for item in os.environ.get("ADMIN_EMAILS", "").split(",")
@@ -190,9 +221,11 @@ def handle_action(event, report_id):
         elif action == "unpublish":
             unpublish_note(report.get("noteId"), admin)
             update_report(report_id, "ACTIONED", admin, action)
+            notify_moderation(get_note(report.get("noteId")), report_id, action)
         elif action == "restore":
             restore_note(report.get("noteId"), admin)
             update_report(report_id, "RESTORED", admin, action)
+            notify_moderation(get_note(report.get("noteId")), report_id, action)
         else:
             return response(400, {"error": "Unsupported moderation action."})
     except ValueError as exc:

@@ -3309,3 +3309,19 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 .settings-avatar-preview .contributor-avatar { flex:0 0 64px; width:64px; height:64px; border-radius:16px; font-size:1.6rem; }
 .settings-avatar-preview strong { color:#101828; }
 .settings-avatar-preview .note-description { margin:5px 0 0; }
+
+/* Lightweight notification bell and private inbox. */
+.notifications-control { position:relative; }
+.notifications-bell { position:relative; min-width:48px; }
+.notifications-count { display:inline-block; margin-left:5px; padding:2px 6px; border-radius:99px; background:#b42318; color:white; font-size:.72rem; font-weight:800; }
+.notifications-panel { position:absolute; z-index:100; top:calc(100% + 10px); right:0; width:min(390px,calc(100vw - 32px)); max-height:450px; overflow:auto; padding:15px; border:1px solid #d0d5dd; box-shadow:0 16px 40px rgba(16,24,40,.14); background:#fff; border-radius:14px; }
+.notifications-heading { display:flex; gap:10px; justify-content:space-between; align-items:center; }
+.notifications-heading h2 { font-size:1.1rem; margin:0; }
+.notifications-items { display:grid; }
+.notification-item { padding:12px 0; border-top:1px solid #eaecf0; }
+.notification-item.unread { border-left:3px solid #4655d6; padding-left:8px; }
+.notification-item p { margin:0 0 4px; font-size:.92rem; }
+.notification-item small { color:#667085; }
+.notification-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+.notification-actions .button { padding:4px 8px; font-size:.78rem; }
+@media (max-width:500px) { .notifications-panel { right:-30px; } }

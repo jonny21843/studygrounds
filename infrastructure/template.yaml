@@ -939,11 +939,14 @@ Resources:
           NOTES_TABLE: !Ref NotesTable
           REPORTS_TABLE: !Ref ModerationReportsTable
           ADMIN_EMAILS: !Ref AdminEmails
+          PREFERENCES_TABLE: !Ref PreferencesTable
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref NotesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ModerationReportsTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref PreferencesTable
       Events:
         ListModeration:
           Type: HttpApi
@@ -997,6 +1000,37 @@ Resources:
             Auth:
               Authorizer: NONE
 
+  NotificationsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/notifications/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Architectures: [x86_64]
+      MemorySize: 128
+      Timeout: 10
+      Environment:
+        Variables:
+          PREFERENCES_TABLE: !Ref PreferencesTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PreferencesTable
+      Events:
+        ListNotifications:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notifications
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        ReadNotifications:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/notifications
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
+
   HelpfulVotesFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -1010,11 +1044,14 @@ Resources:
         Variables:
           NOTES_TABLE: !Ref NotesTable
           HELPFUL_VOTES_TABLE: !Ref HelpfulVotesTable
+          PREFERENCES_TABLE: !Ref PreferencesTable
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref HelpfulVotesTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref PreferencesTable
         - Statement:
             - Effect: Allow
               Action:

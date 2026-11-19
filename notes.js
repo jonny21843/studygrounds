@@ -516,6 +516,97 @@ async function saveSettingsProfile(event) {
     }
 }
 
+// Lightweight private inbox. Fetch on sign-in, focus and bell-open (no polling).
+let notificationsRequestVersion = 0;
+let notificationsOpen = false;
+function resetNotifications() {
+    ++notificationsRequestVersion;
+    notificationsOpen = false;
+    document.getElementById("notifications-panel").hidden = true;
+    document.getElementById("notifications-toggle").setAttribute("aria-expanded", "false");
+    document.getElementById("notifications-count").hidden = true;
+    document.getElementById("notifications-items").replaceChildren();
+    document.getElementById("notifications-status").textContent = "";
+}
+async function loadNotifications() {
+    if (!isAuthenticated()) return;
+    const version = ++notificationsRequestVersion;
+    const token = getAccessToken();
+    const status = document.getElementById("notifications-status");
+    try {
+        const response = await authenticatedFetch("/api/notifications");
+        const data = await response.json();
+        if (version !== notificationsRequestVersion || token !== getAccessToken() || !isAuthenticated()) return;
+        if (!response.ok) throw new Error(data.error || "Unable to load notifications.");
+        const badge = document.getElementById("notifications-count");
+        const count = Math.max(0, Number(data.unreadCount || 0));
+        badge.hidden = !count;
+        badge.textContent = count > 99 ? "99+" : String(count);
+        document.getElementById("notifications-toggle").setAttribute("aria-label", count ? count + " unread notifications" : "Notifications");
+        const list = document.getElementById("notifications-items");
+        list.replaceChildren();
+        for (const notice of data.notifications || []) {
+            const item = document.createElement("div");
+            item.className = "notification-item" + (notice.read ? "" : " unread");
+            const message = document.createElement("p");
+            message.textContent = notice.message || "StudyGrounds update";
+            const timestamp = document.createElement("small");
+            timestamp.textContent = notice.createdAt ? formatDate(notice.createdAt) : "";
+            const actions = document.createElement("div");
+            actions.className = "notification-actions";
+            const open = document.createElement("button");
+            open.type = "button";
+            open.className = "button button-text";
+            open.textContent = notice.type === "helpful" ? "View note" : "My Notes";
+            open.addEventListener("click", async () => {
+                if (!notice.read) await markNotificationRead(notice.id);
+                toggleNotifications(false);
+                if (notice.type === "helpful" && notice.noteId) {
+                    setActiveView("explore", {skipExploreLoad:true});
+                    openPublicNote(notice.noteId);
+                } else {
+                    setActiveView("my-notes");
+                }
+            });
+            actions.append(open);
+            if (!notice.read) {
+                const mark = document.createElement("button");
+                mark.type = "button";
+                mark.className = "button button-text";
+                mark.textContent = "Mark read";
+                mark.addEventListener("click", () => markNotificationRead(notice.id));
+                actions.append(mark);
+            }
+            item.append(message, timestamp, actions);
+            list.append(item);
+        }
+        status.textContent = data.notifications?.length ? "" : "You're all caught up.";
+    } catch (error) {
+        if (version === notificationsRequestVersion) status.textContent = error.message || "Could not load notifications.";
+    }
+}
+async function markNotificationRead(id = null) {
+    if (!isAuthenticated()) return;
+    try {
+        const response = await authenticatedFetch("/api/notifications", {
+            method: "PATCH",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify(id ? {id} : {all:true})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to mark notifications read.");
+        await loadNotifications();
+    } catch (error) {
+        document.getElementById("notifications-status").textContent = error.message || "Unable to update notifications.";
+    }
+}
+function toggleNotifications(open) {
+    notificationsOpen = open;
+    document.getElementById("notifications-panel").hidden = !open;
+    document.getElementById("notifications-toggle").setAttribute("aria-expanded", String(open));
+    if (open) loadNotifications();
+}
+
 const ADMIN_VIEWS = ["analytics", "security", "moderation", "feedback-admin"];
 function isCurrentAdminView(view, version) {
     return notesState.activeView === view && notesState.navigationVersion === version;
@@ -526,6 +617,7 @@ function setActiveView(view, options = {}) {
         view = "home";
     }
     if (ADMIN_VIEWS.includes(view)) notesState.lastAdminView = view;
+    if (notificationsOpen) toggleNotifications(false);
     if (notesState.activeView === "settings" && view !== "settings") {
         const profileStatus = document.getElementById("settings-profile-status");
         profileStatus.textContent = "";
@@ -608,6 +700,7 @@ function expireLocalSession() {
     notesState.savedCursor = null;
     document.getElementById("saved-notes-grid")?.replaceChildren();
     clearTokens();
+    resetNotifications();
     notesState.notes = [];
     notesState.profile = null;
     notesState.isAdmin = false;
@@ -650,6 +743,8 @@ function renderSignedInState() {
     settingsTab.hidden = !signedIn;
     adminTab.hidden = !signedIn || !notesState.isAdmin || !isConfiguredAdmin();
     feedbackTab.hidden = !signedIn;
+    document.getElementById("notifications-control").hidden = !signedIn;
+    if (!signedIn) resetNotifications();
 
     document.getElementById("home-personalized").hidden = !signedIn;
     document.getElementById("home-feedback-card").hidden = !signedIn;
@@ -4362,6 +4457,7 @@ window.addEventListener("focus", () => {
         else renderSignedInState();
         return;
     }
+    loadNotifications();
     if (notesState.activeView === "my-notes") loadNotes();
     if (notesState.activeView === "saved-notes") loadSavedNotes();
     if (notesState.activeView === "study-history") loadStudyDashboard();
@@ -4376,6 +4472,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadPublicTaxonomy();
 
     document.getElementById("hero-sign-in-btn").addEventListener("click", signIn);
+    document.getElementById("notifications-toggle").addEventListener("click", () => toggleNotifications(!notificationsOpen));
+    document.getElementById("notifications-read-all").addEventListener("click", () => markNotificationRead());
+    document.addEventListener("click", event => {
+        if (notificationsOpen && !document.getElementById("notifications-control").contains(event.target)) toggleNotifications(false);
+    });
     document.getElementById("home-tab").addEventListener("click", () => setActiveView("home"));
     document.getElementById("home-explore").addEventListener("click", () => setActiveView("explore"));
     document.getElementById("home-sign-in").addEventListener("click", signIn);
@@ -4552,6 +4653,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         await loadNotes();
     }
     await loadFeaturedHome();
+    if (isAuthenticated()) loadNotifications();
     if (notesState.activeView === "home") loadHomeDashboard();
 
     const sharedParams = new URL(window.location.href).searchParams;
