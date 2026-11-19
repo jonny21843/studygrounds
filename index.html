@@ -289,6 +289,13 @@
                     <p class="subtitle">Keep links to published study material here without copying the files.</p>
                 </div>
             </div>
+            <div class="saved-collections-toolbar" id="saved-collections-toolbar" hidden>
+                <label for="saved-collection-filter">Collection</label>
+                <select id="saved-collection-filter" aria-label="Filter loaded saved notes by collection">
+                    <option value="all">All saved notes</option>
+                </select>
+                <p class="field-hint">Organize your bookmarks into named collections. Filters apply to loaded notes; use Load more to see older bookmarks.</p>
+            </div>
             <section id="saved-notes-status" class="status-card" role="status" aria-live="polite">Loading saved notes...</section>
             <div id="saved-notes-grid" class="saved-notes-grid"></div>
             <div class="saved-more-row">
