@@ -108,10 +108,19 @@ jobs:
           malware_fn="$(resolve MalwareScanResultFunction)"
           upload_fn="$(resolve CreateUploadFunction)"
           bucket="$(resolve NotesBucket)"
-          test "$api_id" = "$known_api"
+          echo "Resolved API ID: $api_id (expected: $known_api)"
+          echo "Resolved malware handler: $malware_fn"
+          echo "Resolved upload handler: $upload_fn"
+          echo "Resolved uploads bucket: $bucket"
+          if [[ "$api_id" != "$known_api" ]]; then
+            echo "::error::API ID mismatch: CloudFormation returned '$api_id'; expected '$known_api'. Monitoring deployment stopped before changes."
+            exit 1
+          fi
           for value in "$malware_fn" "$upload_fn" "$bucket"; do
-            test -n "$value"
-            test "$value" != "None"
+            if [[ -z "$value" || "$value" == "None" ]]; then
+              echo "::error::An expected CloudFormation resource physical ID was missing. Monitoring deployment stopped before changes."
+              exit 1
+            fi
           done
           {
             echo "APP_API_ID=$api_id"
