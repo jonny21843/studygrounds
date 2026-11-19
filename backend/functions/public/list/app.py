@@ -4,6 +4,8 @@ import math
 from datetime import datetime, timezone
 from decimal import Decimal
 import os
+import re
+import unicodedata
 
 import boto3
 from boto3.dynamodb.conditions import Attr
@@ -26,15 +28,47 @@ def response(status_code, body):
     }
 
 
+def normalize_search(value):
+    """Ignore case, accents, punctuation and irregular whitespace for discovery."""
+    text = unicodedata.normalize("NFKD", str(value or "").casefold())
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return " ".join(re.findall(r"\w+", text, re.UNICODE))
+
+
+SEARCH_FIELDS = {
+    "title": 9,
+    "subject": 5,
+    "collection": 5,
+    "publicAuthor": 4,
+    "description": 1,
+}
+
+
 def searchable_text(note):
-    return " ".join(
-        [
-            note.get("title", ""),
-            note.get("subject", ""),
-            note.get("collection", ""),
-            note.get("description", ""),
-        ]
-    ).lower()
+    return " ".join(normalize_search(note.get(field)) for field in SEARCH_FIELDS)
+
+
+def relevance_score(note, query):
+    """All query words must match; title and exact-phrase matches rank higher."""
+    words = normalize_search(query).split()
+    if not words:
+        return 0
+    fields = {field: normalize_search(note.get(field)) for field in SEARCH_FIELDS}
+    if not all(any(word in value for value in fields.values()) for word in words):
+        return None
+    score = 0
+    for word in words:
+        score += max((weight for field, weight in SEARCH_FIELDS.items() if word in fields[field]), default=0)
+        if word in fields["title"].split():
+            score += 3
+    phrase = " ".join(words)
+    if phrase and phrase in fields["title"]:
+        score += 24
+    elif phrase and any(phrase in fields[field] for field in ("subject", "collection", "publicAuthor")):
+        score += 12
+    return score
+
+
 
 
 def safe_public_files(note):
@@ -95,10 +129,14 @@ def trending_score(note, now=None):
 
 def lambda_handler(event, context):
     params = event.get("queryStringParameters") or {}
-    query = (params.get("q") or "").strip().lower()
+    query = (params.get("q") or "").strip()[:200]
     subject = (params.get("subject") or "").strip().lower()
     collection = (params.get("collection") or "").strip().lower()
     sort = (params.get("sort") or "newest").strip().lower()
+    if sort not in {"newest", "oldest", "title", "views", "helpful", "trending", "relevance"}:
+        return response(400, {"error": "Invalid sort"})
+    if sort == "relevance" and not normalize_search(query):
+        sort = "newest"
 
     try:
         page = max(1, int(params.get("page") or 1))
@@ -159,12 +197,7 @@ def lambda_handler(event, context):
     notes = all_public
 
     if query:
-        keywords = [part for part in query.split() if part]
-        notes = [
-            note
-            for note in notes
-            if all(keyword in searchable_text(note) for keyword in keywords)
-        ]
+        notes = [note for note in notes if relevance_score(note, query) is not None]
 
     if subject:
         notes = [
@@ -180,7 +213,17 @@ def lambda_handler(event, context):
             if (note.get("collection") or "").strip().lower() == collection
         ]
 
-    if sort == "oldest":
+    if sort == "relevance":
+        notes.sort(
+            key=lambda note: (
+                relevance_score(note, query),
+                max(0, int(note.get("helpfulCount") or 0)),
+                note.get("publishedAt") or "",
+                note.get("noteId") or "",
+            ),
+            reverse=True,
+        )
+    elif sort == "oldest":
         notes.sort(key=lambda note: note.get("publishedAt", ""))
     elif sort == "title":
         notes.sort(key=lambda note: (note.get("title") or "").lower())
