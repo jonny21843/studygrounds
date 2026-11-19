@@ -11,6 +11,10 @@ on:
       - "index.html"
       - "auth.js"
       - "notes.js"
+      - "legal.js"
+      - "terms.html"
+      - "privacy.html"
+      - "community-guidelines.html"
       - "tabs.js"
       - "styles.css"
       - "auth/**"
@@ -67,6 +71,7 @@ jobs:
           set -euo pipefail
           node --check auth.js
           node --check notes.js
+          node --check legal.js
           node --check tabs.js
           for script in auth/*.js; do
             if [[ -f "$script" ]]; then
