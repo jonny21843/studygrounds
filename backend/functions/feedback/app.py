@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 """Authenticated feedback submissions and admin triage."""
 import json
 import os
@@ -146,6 +147,9 @@ def update_feedback(event):
     return respond(200, {"feedbackId": feedback_id, "status": payload["status"]})
 
 def lambda_handler(event, context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     path = (event.get("rawPath") or "").rstrip("/")
     method = ((event.get("requestContext") or {}).get("http") or {}).get("method", "").upper()
     if path == "/api/feedback" and method == "POST":
