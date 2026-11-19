@@ -96,6 +96,7 @@ Resources:
   FailedObjectScanRule:
     Type: AWS::Events::Rule
     Properties:
+      Name: !Sub "studygrounds-${EnvironmentName}-failed-object-scan"
       Description: Alert when a StudyGrounds object scan fails or cannot be completed.
       State: ENABLED
       EventPattern:
