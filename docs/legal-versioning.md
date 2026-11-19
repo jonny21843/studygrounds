@@ -36,3 +36,16 @@ moderation records. SQS redrive maintains failed requests for investigation.
 The worker remains unverified in real AWS until DEV integration testing.
 Review actual DynamoDB point-in-time backups, CloudWatch retention, and any
 offsite copies before promising a deletion SLA.
+
+## One-time age eligibility (DEV)
+
+The pre-Cognito sign-up UI asks prospective new users to affirm they are 13+.
+Once authenticated, the first legal acceptance saves an independent
+`PreferencesTable` record (`pk=USER#sub, sk=AGE#13_PLUS`) with timestamp.
+During a transition, previously verified `LEGAL#terms#1.1` or
+`LEGAL#terms#1.2` records containing `age13OrOlderConfirmed: true` are
+migrated into this independent record on legal status checks.
+Subsequent Terms and Privacy revisions **do not repeat** the age prompt;
+only policy versions with outstanding acknowledgements are shown.
+This is a self-attestation, not proof of age. Direct use of Cognito's hosted
+signup remains a separate enforcement gap before a production release.

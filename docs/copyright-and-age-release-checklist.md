@@ -12,3 +12,5 @@
 - Account deletion adds a durable background worker and pending-write protection. Test failure and DLQ recovery in DEV before production.
 - Signup shows a 13+ self-attestation before the StudyGrounds-controlled Cognito signup link. **Direct Cognito-hosted signup can bypass this website gate**; true pre-registration enforcement requires a tested Cognito-side design and must remain a release blocker for under-13 data collection risk.
 - Policy v1.2 is identified by SHA-256 of actual shipped HTML. Draft language and any unverified retention promises remain subject to owner/legal signoff.
+
+- One-time age declaration is now independent of Terms policy versions (`AGE#13_PLUS`), including migration from DEV legacy Terms v1.1/v1.2 age flags. A later policy revision must not ask for age again. Test both legacy and first-time registration flows.

@@ -71,7 +71,13 @@ class GuardTests(unittest.TestCase):
 
 class AcceptanceEndpointTests(unittest.TestCase):
     def setUp(self):
+        self.items = {}
         self.table = MagicMock()
+        self.table.get_item.side_effect = lambda Key, **kwargs: {"Item": dict(self.items[tuple(Key.values())])} if tuple(Key.values()) in self.items else {}
+        def put_item(Item, **kwargs):
+            key = (Item["pk"], Item["sk"])
+            self.items[key] = dict(Item)
+        self.table.put_item.side_effect = put_item
         self.resource = MagicMock()
         self.resource.Table.return_value = self.table
         self.env = patch.dict(os.environ, ENV)
@@ -79,7 +85,9 @@ class AcceptanceEndpointTests(unittest.TestCase):
         self.env.start()
         self.mock_resource.start()
         subprocess.run([sys.executable, str(ROOT / "scripts" / "build_legal_manifest.py")], check=True)
-        spec = importlib.util.spec_from_file_location("studygrounds_legal_handler", ROOT / "backend" / "functions" / "legal" / "app.py")
+        spec = importlib.util.spec_from_file_location(
+            "studygrounds_legal_handler", ROOT / "backend" / "functions" / "legal" / "app.py"
+        )
         self.handler = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.handler)
 
@@ -87,61 +95,108 @@ class AcceptanceEndpointTests(unittest.TestCase):
         self.mock_resource.stop()
         self.env.stop()
 
-    def valid_payload(self):
-        return {"termsVersion": "1.2", "privacyVersion": "1.2", "termsHash": self.handler.DOCUMENTS["terms"]["contentHash"], "privacyHash": self.handler.DOCUMENTS["privacy"]["contentHash"], "agreeToTerms": True, "acknowledgePrivacy": True, "age13OrOlder": True}
+    def payload(self, **changes):
+        result = {
+            "termsVersion": "1.2", "privacyVersion": "1.2",
+            "termsHash": self.handler.DOCUMENTS["terms"]["contentHash"],
+            "privacyHash": self.handler.DOCUMENTS["privacy"]["contentHash"],
+            "agreeToTerms": True, "acknowledgePrivacy": True,
+            "age13OrOlder": True,
+        }
+        result.update(changes)
+        return result
 
-    def test_get_returns_required_when_no_acceptance(self):
-        self.table.get_item.return_value = {}
-        result = self.handler.lambda_handler(request("GET"), None)
-        self.assertEqual(result["statusCode"], 200)
-        self.assertTrue(response_json(result)["required"])
+    def accept(self, **changes):
+        return self.handler.lambda_handler(request(body=self.payload(**changes)), None)
 
-    def test_valid_acceptance_is_immutable_per_version(self):
-        result = self.handler.lambda_handler(request(body=self.valid_payload()), None)
+    def status(self):
+        return response_json(self.handler.lambda_handler(request("GET"), None))
+
+    def seed_doc(self, name, version="1.2", age=False):
+        self.items[("USER#user-123", "LEGAL#" + name + "#" + version)] = {
+            "pk": "USER#user-123", "sk": "LEGAL#" + name + "#" + version,
+            "acceptedAt": "2026-11-01T12:00:00Z",
+            "contentHash": self.handler.DOCUMENTS[name]["contentHash"],
+            **({"age13OrOlderConfirmed": True} if age else {}),
+        }
+
+    def test_first_acceptance_separately_records_age_once(self):
+        self.assertTrue(self.status()["required"])
+        self.assertFalse(self.status()["ageConfirmed"])
+        result = self.accept()
         self.assertEqual(result["statusCode"], 200)
-        self.assertEqual(self.table.put_item.call_count, 2)
+        self.assertEqual(self.table.put_item.call_count, 3)
         keys = [call.kwargs["Item"]["sk"] for call in self.table.put_item.call_args_list]
-        self.assertEqual(keys, ["LEGAL#terms#1.2", "LEGAL#privacy#1.2"])
-        self.assertTrue(self.table.put_item.call_args_list[0].kwargs["Item"]["age13OrOlderConfirmed"])
-        for call in self.table.put_item.call_args_list:
-            self.assertEqual(call.kwargs["Item"]["contentHash"], self.handler.DOCUMENTS[call.kwargs["Item"]["document"]]["contentHash"])
-            self.assertIn("attribute_not_exists", call.kwargs["ConditionExpression"])
-            self.assertEqual(call.kwargs["Item"]["pk"], "USER#user-123")
+        self.assertEqual(keys, ["AGE#13_PLUS", "LEGAL#terms#1.2", "LEGAL#privacy#1.2"])
+        self.assertTrue(self.items[("USER#user-123", "AGE#13_PLUS")]["age13OrOlderConfirmed"])
+        self.assertNotIn("age13OrOlderConfirmed", self.items[("USER#user-123", "LEGAL#terms#1.2")])
+        self.assertTrue(self.status()["ageConfirmed"])
+        self.assertFalse(self.status()["required"])
 
-    def test_stale_version_is_rejected(self):
-        payload = self.valid_payload()
-        payload["termsVersion"] = "0.9"
-        result = self.handler.lambda_handler(request(body=payload), None)
-        self.assertEqual(result["statusCode"], 409)
-        self.table.put_item.assert_not_called()
+    def test_existing_age_confirmation_does_not_repeat_on_later_policies(self):
+        self.items[("USER#user-123", "AGE#13_PLUS")] = {
+            "pk": "USER#user-123", "sk": "AGE#13_PLUS", "age13OrOlderConfirmed": True
+        }
+        self.seed_doc("terms")
+        status = self.status()
+        self.assertTrue(status["ageConfirmed"])
+        self.assertTrue(status["documents"]["terms"]["accepted"])
+        self.assertFalse(status["documents"]["privacy"]["accepted"])
+        body = self.payload(acknowledgePrivacy=True)
+        body.pop("age13OrOlder")
+        result = self.handler.lambda_handler(request(body=body), None)
+        self.assertEqual(result["statusCode"], 200)
+        self.assertNotIn("age13OrOlderConfirmed", self.items[("USER#user-123", "LEGAL#privacy#1.2")])
+        self.assertFalse(self.status()["required"])
 
-    def test_no_checked_confirmation_is_rejected(self):
-        payload = self.valid_payload()
-        payload["acknowledgePrivacy"] = False
-        result = self.handler.lambda_handler(request(body=payload), None)
-        self.assertEqual(result["statusCode"], 400)
-        self.table.put_item.assert_not_called()
+    def test_legacy_age_migrates_from_previous_terms_versions(self):
+        for version in ("1.1", "1.2"):
+            with self.subTest(version=version):
+                self.items.clear()
+                self.seed_doc("terms", version=version, age=True)
+                self.table.put_item.reset_mock()
+                result = self.status()
+                self.assertTrue(result["ageConfirmed"])
+                saved = self.items[("USER#user-123", "AGE#13_PLUS")]
+                self.assertEqual(saved["source"], "legacy-terms-" + version)
+                self.table.put_item.assert_called_once()
+                self.status()
+                self.table.put_item.assert_called_once()
 
-    def test_mismatched_document_hash_rejected(self):
-        payload = self.valid_payload()
-        payload["termsHash"] = "bogus"
-        result = self.handler.lambda_handler(request(body=payload), None)
-        self.assertEqual(result["statusCode"], 409)
-        self.table.put_item.assert_not_called()
-
-    def test_under_13_is_rejected(self):
-        payload = self.valid_payload()
-        payload["age13OrOlder"] = False
+    def test_non_explicit_legacy_terms_does_not_skip_age(self):
+        self.seed_doc("terms", version="1.1", age=False)
+        self.assertFalse(self.status()["ageConfirmed"])
+        payload = self.payload()
+        payload.pop("age13OrOlder")
         result = self.handler.lambda_handler(request(body=payload), None)
         self.assertEqual(result["statusCode"], 403)
         self.table.put_item.assert_not_called()
 
-    def test_unknown_fields_and_imposed_identity_are_rejected(self):
-        payload = self.valid_payload()
-        payload["userId"] = "victim"
-        result = self.handler.lambda_handler(request(body=payload), None)
+    def test_mismatched_version_and_hash_rejected(self):
+        result = self.accept(termsVersion="0.9")
+        self.assertEqual(result["statusCode"], 409)
+        result = self.accept(termsHash="wrong")
+        self.assertEqual(result["statusCode"], 409)
+        self.table.put_item.assert_not_called()
+
+    def test_policy_agreement_is_required_for_outstanding_document(self):
+        result = self.accept(acknowledgePrivacy=False)
+        self.assertEqual(result["statusCode"], 400)
+        result = self.accept(agreeToTerms=False)
         self.assertEqual(result["statusCode"], 400)
         self.table.put_item.assert_not_called()
+
+    def test_under_13_and_unknown_fields_rejected(self):
+        self.assertEqual(self.accept(age13OrOlder=False)["statusCode"], 403)
+        self.assertEqual(self.accept(userId="another-user")["statusCode"], 400)
+        self.table.put_item.assert_not_called()
+
+    def test_get_acceptance_does_not_falsely_infer_age_from_version(self):
+        self.seed_doc("terms")
+        self.seed_doc("privacy")
+        result = self.status()
+        self.assertFalse(result["ageConfirmed"])
+        self.assertTrue(result["required"])
 
 if __name__ == "__main__":
     unittest.main()

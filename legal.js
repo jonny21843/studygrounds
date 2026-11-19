@@ -29,9 +29,9 @@ function showLegalGate(message = "") {
             <p>Before continuing, please review our legal documents. Your notes and account will remain available after you accept.</p>
             <p><a href="/terms.html" target="_blank" rel="noopener">Terms of Use</a> (v<span id="legal-terms-version"></span>) · <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> (v<span id="legal-privacy-version"></span>) · <a href="/community-guidelines.html" target="_blank" rel="noopener">Community Guidelines</a> · <a href="/copyright.html" target="_blank" rel="noopener">Copyright and DMCA Policy</a></p>
             <form id="legal-accept-form">
-                <label><input id="legal-age" type="checkbox" required> I confirm that I am at least 13 years old.</label>
-                <label><input id="legal-agree" type="checkbox" required> I have read and agree to the Terms of Use.</label>
-                <label><input id="legal-privacy" type="checkbox" required> I acknowledge the Privacy Policy.</label>
+                <label id="legal-age-row"><input id="legal-age" type="checkbox" required> I confirm that I am at least 13 years old.</label>
+                <label id="legal-terms-row"><input id="legal-agree" type="checkbox" required> I have read and agree to the Terms of Use.</label>
+                <label id="legal-privacy-row"><input id="legal-privacy" type="checkbox" required> I acknowledge the Privacy Policy.</label>
                 <p id="legal-gate-message" role="alert" class="status-text"></p>
                 <div class="home-actions"><button class="button button-primary" type="submit">Accept and Continue</button><button id="legal-retry" type="button" class="button button-secondary" hidden>Retry Check</button><button id="legal-signout" type="button" class="button button-secondary">Sign Out</button></div>
             </form>
@@ -65,9 +65,9 @@ function showLegalGate(message = "") {
                         termsHash: hashes.terms,
                         privacyHash: hashes.privacy,
                         privacyVersion: legalStatus.documents.privacy.version,
-                        agreeToTerms: gate.querySelector("#legal-agree").checked,
-                        acknowledgePrivacy: gate.querySelector("#legal-privacy").checked,
-                        age13OrOlder: gate.querySelector("#legal-age").checked
+                        agreeToTerms: legalStatus.documents.terms.accepted || gate.querySelector("#legal-agree").checked,
+                        acknowledgePrivacy: legalStatus.documents.privacy.accepted || gate.querySelector("#legal-privacy").checked,
+                        ...(legalStatus.ageConfirmed ? {} : {age13OrOlder: gate.querySelector("#legal-age").checked})
                     })
                 });
                 if (!response.ok) throw new Error((await response.json()).error || "Could not save acceptance.");
@@ -82,11 +82,22 @@ function showLegalGate(message = "") {
     if (legalStatus) {
         gate.querySelector("#legal-terms-version").textContent = legalStatus.documents.terms.version;
         gate.querySelector("#legal-privacy-version").textContent = legalStatus.documents.privacy.version;
+        for (const [row, checkbox, needed] of [
+            ["legal-age-row", "legal-age", !legalStatus.ageConfirmed],
+            ["legal-terms-row", "legal-agree", !legalStatus.documents.terms.accepted],
+            ["legal-privacy-row", "legal-privacy", !legalStatus.documents.privacy.accepted]
+        ]) {
+            const element = gate.querySelector("#" + checkbox);
+            gate.querySelector("#" + row).hidden = !needed;
+            element.required = needed;
+            if (!needed) element.checked = false;
+        }
     }
     gate.querySelector("#legal-gate-message").textContent = message;
     gate.querySelector('[type="submit"]').disabled = !legalStatus;
     gate.querySelector("#legal-retry").hidden = Boolean(legalStatus);
-    gate.querySelector("#legal-agree").focus();
+    const first = gate.querySelector('input[required]');
+    if (first) first.focus();
 }
 async function ensureLegalAcceptance() {
     if (!isAuthenticated()) return true;
