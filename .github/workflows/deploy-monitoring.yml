@@ -98,8 +98,26 @@ jobs:
             role_name="StudyGroundsDevMonitoringExecutionRole"
             known_api="nxa9uz2cv0"
           fi
-          stack_status="$(aws cloudformation describe-stacks --stack-name "$app_stack" --region us-east-2 --query 'Stacks[0].StackStatus' --output text)"
-          [[ "$stack_status" == "CREATE_COMPLETE" || "$stack_status" == "UPDATE_COMPLETE" ]]
+          # The normal application release may still be changing this stack.
+          stable=false
+          for attempt in $(seq 1 40); do
+            stack_status="$(aws cloudformation describe-stacks --stack-name "$app_stack" --region us-east-2 --query 'Stacks[0].StackStatus' --output text)"
+            echo "Application stack $app_stack: $stack_status (check $attempt/40)"
+            case "$stack_status" in
+              CREATE_COMPLETE|UPDATE_COMPLETE)
+                stable=true
+                break ;;
+              CREATE_IN_PROGRESS|UPDATE_IN_PROGRESS|UPDATE_COMPLETE_CLEANUP_IN_PROGRESS|UPDATE_ROLLBACK_IN_PROGRESS|UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS)
+                sleep 15 ;;
+              *)
+                echo "::error::Application stack is not ready: $stack_status" >&2
+                exit 1 ;;
+            esac
+          done
+          if [[ "$stable" != "true" ]]; then
+            echo "::error::Application stack did not become stable; monitoring not deployed." >&2
+            exit 1
+          fi
           resolve() {
             # ListStackResources permission exists already; JSON output combines
             # paginated results before selecting the specific logical resource.
