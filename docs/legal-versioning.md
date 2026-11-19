@@ -11,4 +11,6 @@ Current effective date: 2026-11-19. Initial legal versions: terms 1.0 and privac
 - Never silently treat a new privacy purpose as consent; obtain any separate legally required opt-in.
 - Test new and returning users, direct API write rejection (428), document links, logout, expired sessions, and all write handlers.
 - Production deploy should use production-specific DynamoDB resources, IAM and Cognito; do not copy DEV table data.
-- This is an implementation draft, not legal advice. Verify company/operator details, applicable state law, minors policy, data retention, copyright procedures, and support contact before release.
+- Current confirmed operator: **Jonathan Feagans, individually operating as StudyGrounds**. If the service later transfers to an LLC, update the legal operator identity, notices, and any relevant service accounts and registrations.
+- This is an implementation draft, not legal advice. Confirm applicable state law, 13+ onboarding implementation, data retention, DMCA registration and complaint handling, and working support/privacy/copyright contacts before release.
+- These pages are still marked draft. **Before production, finalize the documents, preserve a frozen copy of each version, and increment the required versions** so earlier DEV acknowledgements are not presented as agreement to materially revised text.
