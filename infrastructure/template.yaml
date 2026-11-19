@@ -1222,6 +1222,13 @@ Resources:
             Path: /api/saved-notes/{noteId}
             Method: DELETE
             PayloadFormatVersion: "2.0"
+        OrganizeSavedNote:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/saved-notes/{noteId}
+            Method: PATCH
+            PayloadFormatVersion: "2.0"
 
   PublicContributorFunction:
     Type: AWS::Serverless::Function
