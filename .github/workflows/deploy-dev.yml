@@ -168,6 +168,26 @@ jobs:
             --content-type "text/html" \
             --cache-control "no-cache,no-store,must-revalidate"
 
+      - name: Verify published DEV frontend assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          bucket="studygrounds-frontend-frontendbucket-5jnigqnmskgt"
+          for asset in index.html styles.css notes.js auth/callback.html; do
+            aws s3api head-object --bucket "$bucket" --key "$asset" \
+              --query ContentLength --output text | grep -E '^[1-9][0-9]*
+          aws cloudfront create-invalidation \
+            --distribution-id E1O78RFI5U6N8S \
+            --paths "/*"
+
+
+          done
+          for asset in index.html styles.css notes.js; do
+            aws s3 cp "s3://$bucket/$asset" "/tmp/studygrounds-${asset//\//-}" --only-show-errors
+            cmp "dist/$asset" "/tmp/studygrounds-${asset//\//-}"
+          done
+          echo "DEV frontend artifact smoke checks passed."
+
       - name: Invalidate DEV CloudFront
         run: |
           aws cloudfront create-invalidation \
