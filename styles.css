@@ -3395,3 +3395,41 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 
 /* Give note language the same breathing room as Description. */
 .note-form .note-language-field { margin-top: 16px; }
+
+/* Free community onboarding and organized saved library. */
+.home-welcome-guide {
+    border: 1px solid #c7d2fe;
+    background: linear-gradient(135deg, #f7f8ff 0%, #fff 75%);
+    margin-bottom: 18px;
+}
+.home-welcome-guide[hidden] { display:none; }
+.home-welcome-guide .home-section-heading { align-items:flex-start; }
+.home-welcome-guide .home-section-heading > div { flex:1 1 260px; }
+.home-welcome-guide .home-section-heading p { max-width:65ch; }
+.home-welcome-guide .home-actions { flex-wrap:wrap; margin:14px 0 8px; }
+.saved-collections-toolbar {
+    display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+    margin:0 0 14px; padding:12px 14px; border:1px solid #e4e7ec;
+    border-radius:12px; background:#fff;
+}
+.saved-collections-toolbar[hidden] { display:none; }
+.saved-collections-toolbar label { color:#344054; font-weight:700; font-size:.9rem; }
+.saved-collections-toolbar select,
+.saved-collection-control select {
+    width:auto; max-width:100%; min-height:40px;
+    border:1px solid #d0d5dd; border-radius:9px;
+    padding:8px 12px; color:#344054; font:inherit;
+    background:#fff;
+}
+.saved-collections-toolbar .field-hint { flex:1 1 100%; margin:0; }
+.saved-collection-control { margin:12px 0 0; display:flex; flex-wrap:wrap; align-items:center; gap:9px; font-size:.85rem; font-weight:600; }
+.saved-note-card[hidden] { display:none !important; }
+@media(max-width:600px) {
+    .home-welcome-guide .home-actions > button { flex:1 1 100%; }
+    .saved-collections-toolbar { align-items:stretch; flex-direction:column; }
+    .saved-collections-toolbar select { width:100%; }
+    .saved-collection-control select { flex:1 1 150px; }
+    .public-note-hero-side, .reader-preferences-bar, .reader-source-toolbar { min-width:0; max-width:100%; }
+    .reader-preferences-bar { display:flex; flex-wrap:wrap; gap:10px; }
+    .reader-source-toolbar { flex-wrap:wrap; gap:8px; }
+}
