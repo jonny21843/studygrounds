@@ -31,7 +31,33 @@ async function createPkceChallenge(verifier) {
     return base64UrlEncode(digest);
 }
 
-async function signIn() {
+// This is a pre-registration warning, not independently verified age assurance.
+function signIn() {
+    if (document.getElementById("age-signup-gate")) return;
+    const overlay = document.createElement("div");
+    overlay.id = "age-signup-gate";
+    overlay.className = "legal-gate";
+    overlay.innerHTML = `<section class="legal-gate-dialog" role="dialog" aria-modal="true" aria-labelledby="age-gate-title">
+        <h2 id="age-gate-title">Welcome to StudyGrounds</h2>
+        <p>StudyGrounds is for people aged 13 and older. Existing members can sign in. New members must confirm age eligibility before registering.</p>
+        <div class="age-gate-buttons"><button id="age-existing" class="button button-primary" type="button">Sign in to my account</button></div>
+        <hr>
+        <label><input type="checkbox" id="age-signup-confirm"> I confirm that I am at least 13 years old.</label>
+        <p><a href="/terms.html" target="_blank" rel="noopener">Terms of Use</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a></p>
+        <div class="age-gate-buttons"><button id="age-new" class="button button-secondary" type="button" disabled>Create an account</button><button id="age-cancel" class="button button-text" type="button">Cancel</button></div>
+        <p class="note-description">You cannot create an account if you are under 13.</p>
+    </section>`;
+    document.body.append(overlay);
+    const age = overlay.querySelector("#age-signup-confirm");
+    const create = overlay.querySelector("#age-new");
+    age.addEventListener("change", () => {create.disabled = !age.checked;});
+    overlay.querySelector("#age-cancel").addEventListener("click", () => overlay.remove());
+    overlay.querySelector("#age-existing").addEventListener("click", () => startHostedAuth("authorize"));
+    create.addEventListener("click", () => {if (age.checked) startHostedAuth("signup");});
+    overlay.querySelector("#age-existing").focus();
+}
+
+async function startHostedAuth(screen = "authorize") {
     const verifier = generateRandomString(64);
     const challenge = await createPkceChallenge(verifier);
     const state = generateRandomString(32);
@@ -50,7 +76,7 @@ async function signIn() {
     });
 
     window.location.assign(
-        `${APP_CONFIG.cognitoDomain}/oauth2/authorize?${params.toString()}`
+        `${APP_CONFIG.cognitoDomain}/${screen === "signup" ? "signup" : "oauth2/authorize"}?${params.toString()}`
     );
 }
 

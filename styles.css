@@ -3479,3 +3479,12 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
     background: #e0eafd;
     text-decoration: underline;
 }
+
+/* Signup eligibility and account privacy actions */
+#age-signup-gate .legal-gate-dialog { display:grid; gap: .75rem; }
+#age-signup-gate .age-gate-buttons { display:flex; gap:.75rem; flex-wrap:wrap; }
+#age-signup-gate label { display:flex; align-items:flex-start; gap:.6rem; }
+#age-signup-gate label input { margin-top:.2rem; }
+#account-delete-form { padding-top:1rem; display:grid; gap:.75rem; }
+#account-delete-form[hidden] { display:none; }
+#account-delete-form input { max-width:26rem; }

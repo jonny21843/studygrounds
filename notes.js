@@ -4795,6 +4795,43 @@ document.addEventListener("DOMContentLoaded", async () => {
         setActiveView("explore");
     });
     document.getElementById("settings-tab").addEventListener("click", () => setActiveView("settings"));
+    document.getElementById("account-delete-open").addEventListener("click", () => {
+        document.getElementById("account-delete-form").hidden = false;
+        document.getElementById("account-delete-open").hidden = true;
+        document.getElementById("account-delete-confirm").focus();
+    });
+    document.getElementById("account-delete-cancel").addEventListener("click", () => {
+        document.getElementById("account-delete-form").reset();
+        document.getElementById("account-delete-form").hidden = true;
+        document.getElementById("account-delete-open").hidden = false;
+    });
+    document.getElementById("account-delete-form").addEventListener("submit", async event => {
+        event.preventDefault();
+        const input = document.getElementById("account-delete-confirm");
+        const status = document.getElementById("account-delete-status");
+        if (input.value !== "DELETE MY ACCOUNT") {
+            status.textContent = "Enter the exact confirmation phrase to continue.";
+            return;
+        }
+        const submit = document.getElementById("account-delete-submit");
+        submit.disabled = true;
+        status.textContent = "Submitting deletion request...";
+        try {
+            const response = await authenticatedFetch("/api/account/deletion", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({confirmation: "DELETE MY ACCOUNT"})
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || "Unable to request deletion.");
+            status.textContent = "Deletion requested. Signing out...";
+            signOut();
+        } catch (error) {
+            status.textContent = error.message || "Unable to submit the request.";
+            submit.disabled = false;
+        }
+    });
+
     document.getElementById("settings-open-public-profile").addEventListener("click", openMyPublicProfile);
     ["settings-first-name", "settings-last-name"].forEach(id => {
         document.getElementById(id).addEventListener("input", updateSettingsAvatarPreview);

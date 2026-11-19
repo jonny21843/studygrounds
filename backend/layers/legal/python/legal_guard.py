@@ -15,6 +15,9 @@ def require_legal_acceptance(event):
     if not user_id:
         return {"statusCode": 401, "headers": {"Content-Type": "application/json"}, "body": json.dumps({"error": "Authentication required"})}
     table = boto3.resource("dynamodb").Table(os.environ["LEGAL_PREFERENCES_TABLE"])
+    pending = table.get_item(Key={"pk": "USER#" + user_id, "sk": "ACCOUNT#DELETION"}, ConsistentRead=True).get("Item")
+    if pending:
+        return {"statusCode": 423, "headers": {"Content-Type": "application/json"}, "body": json.dumps({"error": "Account deletion is pending", "code": "ACCOUNT_DELETION_PENDING"})}
     for name, version in (("terms", os.environ["LEGAL_TERMS_VERSION"]), ("privacy", os.environ["LEGAL_PRIVACY_VERSION"])):
         key = {"pk": "USER#" + user_id, "sk": "LEGAL#" + name + "#" + version}
         record = table.get_item(Key=key, ConsistentRead=True).get("Item")

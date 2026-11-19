@@ -57,6 +57,108 @@ Globals:
         LEGAL_PRIVACY_VERSION: "1.1"
 
 Resources:
+  AccountDeletionDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  AccountDeletionQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      VisibilityTimeout: 900
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt AccountDeletionDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  AccountDeletionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/account/deletion/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 10
+      MemorySize: 128
+      Environment:
+        Variables:
+          PREFERENCES_TABLE: !Ref PreferencesTable
+          DELETION_QUEUE_URL: !Ref AccountDeletionQueue
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PreferencesTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt AccountDeletionQueue.QueueName
+      Events:
+        DeletionStatus:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/account/deletion
+            Method: GET
+            PayloadFormatVersion: "2.0"
+        DeleteAccount:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref NotesApi
+            Path: /api/account/deletion
+            Method: POST
+            PayloadFormatVersion: "2.0"
+
+  AccountDeletionWorkerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/functions/account/deletion_worker/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      Timeout: 600
+      MemorySize: 256
+      Environment:
+        Variables:
+          NOTES_TABLE: !Ref NotesTable
+          SAVED_NOTES_TABLE: !Ref SavedNotesTable
+          HELPFUL_VOTES_TABLE: !Ref HelpfulVotesTable
+          STUDY_ACTIVITY_TABLE: !Ref StudyActivityTable
+          PREFERENCES_TABLE: !Ref PreferencesTable
+          SECURITY_TABLE: !Ref UserSecurityTable
+          FEEDBACK_TABLE: !Ref FeedbackTable
+          REPORTS_TABLE: !Ref ModerationReportsTable
+          NOTES_BUCKET: !Ref NotesBucket
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref NotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SavedNotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HelpfulVotesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref StudyActivityTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PreferencesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserSecurityTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FeedbackTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ModerationReportsTable
+        - S3CrudPolicy:
+            BucketName: !Ref NotesBucket
+        - SQSPollerPolicy:
+            QueueName: !GetAtt AccountDeletionQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminDeleteUser
+              Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
+      Events:
+        DeletionQueue:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt AccountDeletionQueue.Arn
+            BatchSize: 1
+
   LegalFunction:
     Type: AWS::Serverless::Function
     Properties:

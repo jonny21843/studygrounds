@@ -714,6 +714,22 @@
                 </form>
             </section>
 
+            <section class="card" aria-labelledby="account-privacy-title">
+                <h3 id="account-privacy-title">Privacy &amp; Data</h3>
+                <p class="note-description">Your private notes remain private until you publish them. You may request permanent account deletion, including your notes, source uploads, saved notes, study activity, and account profile. Some security or legal records and backup copies can remain for a limited period where necessary.</p>
+                <button id="account-delete-open" class="button button-secondary" type="button">Delete my account</button>
+                <form id="account-delete-form" hidden>
+                    <p><strong>Permanent action:</strong> This removes access to your StudyGrounds account and starts deletion of its data. You will be signed out after submission and cannot undo it.</p>
+                    <label for="account-delete-confirm">Type <strong>DELETE MY ACCOUNT</strong> to confirm</label>
+                    <input id="account-delete-confirm" type="text" autocomplete="off" spellcheck="false" required>
+                    <div class="home-actions">
+                        <button id="account-delete-submit" class="button button-primary" type="submit">Request permanent deletion</button>
+                        <button id="account-delete-cancel" class="button button-secondary" type="button">Cancel</button>
+                    </div>
+                    <p id="account-delete-status" class="status-text" role="status" aria-live="polite"></p>
+                </form>
+                <p class="note-description">For privacy or access requests, email <a href="mailto:privacy@joinstudygrounds.com">privacy@joinstudygrounds.com</a>.</p>
+            </section>
             <section class="card"><h3>Legal and community policies</h3>
                 <p class="note-description">Review our <a href="/terms.html" target="_blank" rel="noopener">Terms of Use</a>,
                 <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>, and
