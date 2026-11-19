@@ -3325,3 +3325,15 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 .notification-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
 .notification-actions .button { padding:4px 8px; font-size:.78rem; }
 @media (max-width:500px) { .notifications-panel { right:-30px; } }
+
+/* Profile self-service: account-only summary of public contribution totals. */
+.settings-contributions { max-width: 720px; }
+.settings-contributions-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+.settings-contributions-heading h3 { margin:0 0 4px; }
+.settings-contributions-heading p { margin:0; }
+.settings-contributions-stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:16px; }
+.settings-contributions-stats > div { border:1px solid #eaecf0; border-radius:12px; padding:14px 8px; background:#f8f9fc; text-align:center; }
+.settings-contributions-stats strong { display:block; font-size:1.6rem; color:#172033; }
+.settings-contributions-stats span { display:block; margin-top:3px; font-size:.82rem; color:#667085; }
+.settings-contributions .status-text { margin:12px 0 0; }
+@media (max-width:480px) { .settings-contributions-stats { gap:6px; } .settings-contributions-stats > div { padding:12px 4px; } .settings-contributions-stats span { font-size:.74rem; } }
