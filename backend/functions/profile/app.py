@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 import json
 import os
 import hashlib
@@ -103,6 +104,9 @@ def get_profile(username, user_id):
 
 
 def lambda_handler(event, context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     username = username_from_event(event) or claims(event).get("cognito:username")
     user_id = claims(event).get("sub")
     if not username or not user_id:
