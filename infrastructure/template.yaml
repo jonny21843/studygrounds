@@ -834,11 +834,15 @@ Resources:
           NOTES_BUCKET: !Ref NotesBucket
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           SECURITY_TABLE: !Ref UserSecurityTable
+          PREFERENCES_TABLE: !Ref PreferencesTable
+          MAX_DAILY_PUBLISH_ACTIONS: "10"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref NotesTable
         - DynamoDBReadPolicy:
             TableName: !Ref UserSecurityTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref PreferencesTable
         - Statement:
             - Effect: Allow
               Action:

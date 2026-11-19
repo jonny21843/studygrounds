@@ -9,6 +9,7 @@ import boto3
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["NOTES_TABLE"])
 security_table = dynamodb.Table(os.environ["SECURITY_TABLE"])
+quota_table = dynamodb.Table(os.environ["PREFERENCES_TABLE"])
 cognito = boto3.client("cognito-idp")
 s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-2"))
 user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
@@ -115,6 +116,30 @@ def public_author_for_user(username):
     return f"{first_name} {last_name[0].upper()}."
 
 
+
+def reserve_publish_action(user_id, limit):
+    """Atomic UTC-day counter: reservations include pending GuardDuty publication."""
+    now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        quota_table.update_item(
+            Key={"pk": f"USER#{user_id}", "sk": f"QUOTA#{day}#publish"},
+            UpdateExpression="ADD #used :one SET expiresAt = :expires",
+            ConditionExpression="attribute_not_exists(#used) OR #used < :limit",
+            ExpressionAttributeNames={"#used": "used"},
+            ExpressionAttributeValues={
+                ":one": 1, ":limit": limit,
+                ":expires": int(midnight.timestamp()) + 3 * 86400,
+            },
+        )
+        return True
+    except Exception as error:
+        if getattr(error, "response", {}).get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
+
+
 def lambda_handler(event, context):
     user_id = current_user_id(event)
     username = current_username(event)
@@ -161,6 +186,13 @@ def lambda_handler(event, context):
                 },
             )
 
+        # Repeated Publish requests must not consume quota or reset an active scan queue.
+        if note.get("visibility") == "public":
+            return response(200, {"note": note})
+        if note.get("publishPending"):
+            return response(202, {"note": note, "publishPending": True,
+                "message": "This note is already awaiting its security scan."})
+
         note = refresh_malware_scan_statuses(note)
         if not (note.get("description") or "").strip():
             return response(400, {"error": "Add a description before publishing"})
@@ -186,6 +218,12 @@ def lambda_handler(event, context):
             item for item in files
             if item.get("malwareScanStatus") == "PENDING"
         ]
+        if not reserve_publish_action(user_id, int(os.environ.get("MAX_DAILY_PUBLISH_ACTIONS", "10"))):
+            return response(429, {
+                "error": "Daily publication limit reached. Try again tomorrow (UTC).",
+                "code": "DAILY_PUBLISH_LIMIT",
+            })
+
         if pending_files:
             result = table.update_item(
                 Key={"userId": user_id, "noteId": note_id},
@@ -199,7 +237,13 @@ def lambda_handler(event, context):
                     ":pending": True,
                     ":public_author": author_display_name,
                     ":updated": now,
+                    ":false": False,
                 },
+                ConditionExpression=(
+                    "attribute_exists(userId) AND attribute_exists(noteId) AND "
+                    "visibility <> :public AND "
+                    "(attribute_not_exists(publishPending) OR publishPending = :false)"
+                ),
                 ReturnValues="ALL_NEW",
             )
             return response(
@@ -223,7 +267,13 @@ def lambda_handler(event, context):
                 ":published_at": now,
                 ":public_author": author_display_name,
                 ":updated": now,
+                ":false": False,
             },
+            ConditionExpression=(
+                "attribute_exists(userId) AND attribute_exists(noteId) AND "
+                "visibility <> :public AND "
+                "(attribute_not_exists(publishPending) OR publishPending = :false)"
+            ),
             ReturnValues="ALL_NEW",
         )
     else:
