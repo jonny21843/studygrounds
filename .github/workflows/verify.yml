@@ -44,6 +44,9 @@ jobs:
       - name: Validate production IAM bootstrap CloudFormation template
         run: cfn-lint infrastructure/prod-backend-deploy-iam.yaml
 
+      - name: Validate optional monitoring alarms template
+        run: cfn-lint infrastructure/monitoring.yaml
+
       - name: Python compilation
         run: python -m compileall -q backend tests
 
