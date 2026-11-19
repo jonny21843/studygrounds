@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  One-time bootstrap for automated PROD monitoring. Adds only a dedicated
+  CloudFormation execution role and narrow policy to the EXISTING GitHub
+  StudyGroundsProductionDeploy role. No changes to the existing production application stack.
+
+Parameters:
+  ExistingProdGithubRoleName:
+    Type: String
+    Default: StudyGroundsProductionDeploy
+    AllowedValues: [StudyGroundsProductionDeploy]
+
+Resources:
+  ProdMonitoringExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: StudyGroundsProdMonitoringExecutionRole
+      Description: Execution role used only for studygrounds-prod-observability.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StudyGroundsProdMonitoringExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: MonitoringCloudWatchAlarms
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:TagResource
+                  - cloudwatch:UntagResource
+                Resource: !Sub "arn:${AWS::Partition}:cloudwatch:us-east-2:${AWS::AccountId}:alarm:studygrounds-prod-*"
+              - Sid: MonitoringSnsTopic
+                Effect: Allow
+                Action:
+                  - sns:CreateTopic
+                  - sns:DeleteTopic
+                  - sns:GetTopicAttributes
+                  - sns:SetTopicAttributes
+                  - sns:TagResource
+                  - sns:UntagResource
+                  - sns:Subscribe
+                  - sns:Unsubscribe
+                  - sns:ListSubscriptionsByTopic
+                Resource: !Sub "arn:${AWS::Partition}:sns:us-east-2:${AWS::AccountId}:studygrounds-prod-operational-alerts"
+              - Sid: MonitoringEventBridgeRules
+                Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:DescribeRule
+                  - events:DeleteRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                  - events:ListTargetsByRule
+                  - events:TagResource
+                  - events:UntagResource
+                Resource: !Sub "arn:${AWS::Partition}:events:us-east-2:${AWS::AccountId}:rule/studygrounds-prod-*"
+
+  ExistingProdGithubMonitoringPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: StudyGroundsProdMonitoringDeployPolicy
+      Roles: [!Ref ExistingProdGithubRoleName]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: OnlyMonitoringStackChanges
+            Effect: Allow
+            Action:
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DescribeStackEvents
+              - cloudformation:GetTemplate
+              - cloudformation:GetTemplateSummary
+            Resource:
+              - !Sub "arn:${AWS::Partition}:cloudformation:us-east-2:${AWS::AccountId}:stack/studygrounds-prod-observability/*"
+              - !Sub "arn:${AWS::Partition}:cloudformation:us-east-2:${AWS::AccountId}:changeSet/*/*"
+          - Sid: PassOnlyProdMonitoringRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !GetAtt ProdMonitoringExecutionRole.Arn
+            Condition:
+              StringEquals:
+                "iam:PassedToService": cloudformation.amazonaws.com
+
+Outputs:
+  MonitoringCloudFormationRoleArn:
+    Value: !GetAtt ProdMonitoringExecutionRole.Arn
+  MonitoringStackName:
+    Value: studygrounds-prod-observability
