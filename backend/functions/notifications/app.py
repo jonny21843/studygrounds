@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 """Private in-app notifications stored in the existing per-user preferences table."""
 import json
 import os
@@ -48,6 +49,9 @@ def render(notice):
 
 
 def lambda_handler(event, context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     user_id = identity(event)
     if not user_id:
         return reply(401, {"error": "Sign in to view notifications."})
