@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import hashlib
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -26,7 +27,7 @@ def notify_helpful(note, voter):
         preferences.put_item(
             Item={
                 "pk": "USER#" + note["userId"],
-                "sk": "NOTICE#HELPFUL#" + note["noteId"] + "#" + voter,
+                "sk": "NOTICE#HELPFUL#" + note["noteId"] + "#" + hashlib.sha256(voter.encode("utf-8")).hexdigest(),
                 "type": "helpful",
                 "noteId": note["noteId"],
                 "createdAt": datetime.now(timezone.utc).isoformat(),

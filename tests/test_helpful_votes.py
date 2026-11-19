@@ -28,14 +28,15 @@ class HelpfulVotesTests(unittest.TestCase):
         }
         self.note_table = MagicMock()
         self.vote_table = MagicMock()
+        self.preferences_table = MagicMock()
         self.ddb = MagicMock()
         self.note_table.query.return_value = {"Items": [self.note]}
         self.note_table.get_item.return_value = {"Item": self.note}
         self.vote_table.get_item.return_value = {}
         self.ddb.resource.return_value.Table.side_effect = (
-            lambda name: self.note_table if name == "notes" else self.vote_table
+            lambda name: self.note_table if name == "notes" else self.vote_table if name == "votes" else self.preferences_table
         )
-        with patch.dict(os.environ, {"NOTES_TABLE": "notes", "HELPFUL_VOTES_TABLE": "votes"}):
+        with patch.dict(os.environ, {"NOTES_TABLE": "notes", "HELPFUL_VOTES_TABLE": "votes", "PREFERENCES_TABLE": "preferences"}):
             with patch.object(boto3, "resource", self.ddb.resource):
                 with patch.object(boto3, "client", self.ddb.client):
                     spec = importlib.util.spec_from_file_location(
@@ -72,6 +73,28 @@ class HelpfulVotesTests(unittest.TestCase):
         self.assertEqual(txn[1]["Update"]["TableName"], "notes")
         self.assertEqual(txn[1]["Update"]["ExpressionAttributeValues"][":delta"], {"N": "1"})
         self.assertIn("moderationHold", txn[1]["Update"]["ConditionExpression"])
+
+    def test_helpful_notification_is_private_and_deduplicated(self):
+        self.note["title"] = "Private title isn't needed"
+        status, _ = self.call("PUT")
+        self.assertEqual(status, 200)
+        item = self.preferences_table.put_item.call_args.kwargs["Item"]
+        self.assertEqual(item["pk"], "USER#author")
+        self.assertEqual(item["type"], "helpful")
+        self.assertIn("HELPFUL#", item["sk"])
+        self.assertNotIn("reader", item["sk"])
+        self.assertNotIn("reader", item["message"])
+        self.assertNotIn(self.note["title"], item["message"])
+        self.assertIn("attribute_not_exists", self.preferences_table.put_item.call_args.kwargs["ConditionExpression"])
+        self.preferences_table.put_item.reset_mock()
+        self.vote_table.get_item.return_value = {"Item":{"noteId":NOTE_A}}
+        self.call("PUT")
+        self.preferences_table.put_item.assert_not_called()
+
+    def test_vote_unmark_does_not_send_notification(self):
+        self.vote_table.get_item.return_value = {"Item":{"noteId":NOTE_A}}
+        self.call("DELETE")
+        self.preferences_table.put_item.assert_not_called()
 
     def test_duplicate_put_does_not_increment(self):
         self.vote_table.get_item.return_value = {"Item": {"noteId": NOTE_A}}
