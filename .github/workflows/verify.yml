@@ -47,6 +47,9 @@ jobs:
       - name: Validate optional monitoring alarms template
         run: cfn-lint infrastructure/monitoring.yaml
 
+      - name: Validate scoped DEV and PROD monitoring IAM templates
+        run: cfn-lint infrastructure/dev-monitoring-iam-bootstrap.yaml infrastructure/prod-monitoring-iam-bootstrap.yaml
+
       - name: Python compilation
         run: python -m compileall -q backend tests
 
