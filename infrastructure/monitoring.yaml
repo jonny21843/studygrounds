@@ -128,6 +128,15 @@ Resources:
             Condition:
               ArnEquals:
                 aws:SourceArn: !GetAtt FailedObjectScanRule.Arn
+          - Sid: PermitCloudWatchAlarmAlerts
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AlertTopic
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub "arn:${AWS::Partition}:cloudwatch:us-east-2:${AWS::AccountId}:alarm:studygrounds-${EnvironmentName}-*"
 
 Outputs:
   AlertTopicArn:
