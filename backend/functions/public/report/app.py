@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 import hashlib
 import json
 import os
@@ -77,6 +78,9 @@ def reserve_daily_action(user_id, action, limit):
         raise
 
 def lambda_handler(event, context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     note_id = ((event.get("pathParameters") or {}).get("noteId") or "").strip()
     if not note_id:
         return response(400, {"error": "Note ID is required."})
