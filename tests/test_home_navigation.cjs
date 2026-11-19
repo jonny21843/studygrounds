@@ -60,6 +60,32 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext(section('const ADMIN_VIEWS = ', 'function isConfiguredAdmin()'), ctx);
 vm.runInContext(section('function homeRequestCurrent(', 'function homeMessage('), ctx);
+const guideNode = {hidden: true};
+const dismissalStore = new Map();
+let currentAccount = "alice";
+const guideCtx = vm.createContext({
+    isAuthenticated: () => true,
+    decodeJwtPayload: () => ({sub: currentAccount}),
+    sessionStorage: {getItem: () => "id-token"},
+    localStorage: {
+        getItem: key => dismissalStore.get(key) || null,
+        setItem: (key, value) => dismissalStore.set(key, value)
+    },
+    document: {getElementById: () => guideNode}
+});
+vm.runInContext(section('// Browse-first onboarding;', 'function renderSignedInState()'), guideCtx);
+guideCtx.updateWelcomeGuide();
+assert.equal(guideNode.hidden, false, "new account sees the browse/share guide");
+guideCtx.dismissWelcomeGuide();
+assert.equal(guideNode.hidden, true, "dismissal hides onboarding");
+guideCtx.updateWelcomeGuide();
+assert.equal(guideNode.hidden, true, "dismissal persists on this browser");
+currentAccount = "bob";
+guideCtx.updateWelcomeGuide();
+assert.equal(guideNode.hidden, false, "another account still sees onboarding");
+assert(html.includes('id="home-guide-share"'), "guide must include a share-notes invitation");
+assert(html.includes('id="saved-collection-filter"'), "saved notes must expose collection filtering");
+
 const avatarPreview = {className: "", textContent: ""};
 const avatarName = {textContent: ""};
 const avatarContext = vm.createContext({
