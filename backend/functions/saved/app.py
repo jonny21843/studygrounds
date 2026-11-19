@@ -72,7 +72,7 @@ def find_public_note(note_id, note_owner_id=None):
     return note if eligible_note(note) else None
 
 
-def note_projection(note, saved_at):
+def note_projection(note, saved_at, collection=""):
     return {
         "noteId": note["noteId"],
         "title": note.get("title") or "",
@@ -85,6 +85,7 @@ def note_projection(note, saved_at):
         "viewCount": int(note.get("viewCount") or 0),
         "helpfulCount": max(0, int(note.get("helpfulCount") or 0)),
         "savedAt": saved_at,
+        "collection": collection,
         "available": True,
     }
 
@@ -129,13 +130,14 @@ def list_saved(user_id, params):
     for bookmark in result.get("Items") or []:
         note = find_public_note(bookmark["noteId"], bookmark.get("noteOwnerId"))
         if note:
-            notes.append(note_projection(note, bookmark.get("savedAt")))
+            notes.append(note_projection(note, bookmark.get("savedAt"), bookmark.get("collection") or ""))
         else:
             # Never return stale title, description, owner or files for removed notes.
             notes.append({
                 "noteId": bookmark["noteId"],
                 "available": False,
                 "savedAt": bookmark.get("savedAt"),
+                "collection": bookmark.get("collection") or "",
             })
 
     last = result.get("LastEvaluatedKey")
@@ -174,6 +176,30 @@ def lambda_handler(event, context):
     if method == "DELETE":
         saved_table.delete_item(Key=key)
         return response(200, {"saved": False})
+
+    if method == "PATCH":
+        try:
+            payload = json.loads(event.get("body") or "{}")
+        except (ValueError, TypeError):
+            return response(400, {"error": "Invalid collection request"})
+        if not isinstance(payload, dict) or not isinstance(payload.get("collection"), str):
+            return response(400, {"error": "Collection name is required"})
+        name = payload["collection"].strip()
+        if len(name) > 60 or any(ord(ch) < 32 for ch in name):
+            return response(400, {"error": "Collection name must be 60 characters or fewer"})
+        try:
+            saved_table.update_item(
+                Key=key,
+                UpdateExpression="SET #collection = :name",
+                ConditionExpression="attribute_exists(userId) AND attribute_exists(noteId)",
+                ExpressionAttributeNames={"#collection": "collection"},
+                ExpressionAttributeValues={":name": name},
+            )
+        except Exception as error:
+            if getattr(error, "response", {}).get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+                return response(404, {"error": "Saved note not found"})
+            raise
+        return response(200, {"collection": name})
 
     if method != "PUT":
         return response(405, {"error": "Method not allowed"})
