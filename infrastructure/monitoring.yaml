@@ -1,0 +1,136 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Optional StudyGrounds alarms and email notifications (deploy independently of the application stack).
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    AllowedValues: [dev, prod]
+  AlertEmail:
+    Type: String
+    AllowedPattern: "[^@\\s]+@[^@\\s]+\\.[^@\\s]+"
+    Description: Email address that will receive SNS subscription confirmation and alerts.
+  ApiId:
+    Type: String
+    Description: Existing HTTP API Gateway ID for this environment.
+  MalwareFunctionName:
+    Type: String
+    Description: Existing GuardDuty scan-result Lambda function name.
+  UploadFunctionName:
+    Type: String
+    Description: Existing file-upload authorization Lambda function name.
+  NotesBucketName:
+    Type: String
+    Description: Existing StudyGrounds uploads bucket for this environment.
+
+Resources:
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "studygrounds-${EnvironmentName}-operational-alerts"
+      DisplayName: !Sub "StudyGrounds ${EnvironmentName} alerts"
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  ApiServerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "studygrounds-${EnvironmentName}-api-5xx"
+      AlarmDescription: Five or more HTTP API server errors within five minutes.
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref ApiId
+        - Name: Stage
+          Value: "$default"
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  MalwareHandlerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "studygrounds-${EnvironmentName}-scan-handler-errors"
+      AlarmDescription: A GuardDuty scan-result handler Lambda execution failed.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref MalwareFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  UploadHandlerErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "studygrounds-${EnvironmentName}-upload-handler-errors"
+      AlarmDescription: Repeated file-upload authorization Lambda execution failures.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref UploadFunctionName
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+  FailedObjectScanRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Alert when a StudyGrounds object scan fails or cannot be completed.
+      State: ENABLED
+      EventPattern:
+        source: [aws.guardduty]
+        detail-type: ["GuardDuty Malware Protection Object Scan Result"]
+        detail:
+          s3ObjectDetails:
+            bucketName: [!Ref NotesBucketName]
+          scanResultDetails:
+            scanResultStatus: [FAILED, UNSUPPORTED, ACCESS_DENIED]
+      Targets:
+        - Id: NotifyStudyGroundsAdmin
+          Arn: !Ref AlertTopic
+          Input: '"StudyGrounds object scan was not completed successfully. Open GuardDuty, EventBridge and the scan-result Lambda logs for this environment. No file content is included in this alert."'
+
+  AlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref AlertTopic]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: PermitEventBridgeAlerts
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AlertTopic
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt FailedObjectScanRule.Arn
+
+Outputs:
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+  ApiAlarmName:
+    Value: !Ref ApiServerErrorAlarm
+  FailedScanRuleName:
+    Value: !Ref FailedObjectScanRule
