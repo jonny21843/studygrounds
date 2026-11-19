@@ -43,7 +43,6 @@ def remove_partition(table, partition_key, sort_key, value, skip=None):
             return
 
 def delete_s3_prefix(sub):
-    paginator = s3.get_paginator("list_objects_v2")
     prefix = "users/" + sub + "/"
     # Repeat first page after each delete to avoid continuation tokens into removed items.
     while True:

@@ -53,7 +53,7 @@ def lambda_handler(event, context):
             return reply(202, {"requested": True, "status": "PENDING"})
         raise
     try:
-        queue.send_message(QueueUrl=QUEUE_URL, MessageBody=json.dumps({"sub": sub, "requestId": request_id}))
+        queue.send_message(QueueUrl=QUEUE_URL, MessageBody=json.dumps({"sub": sub, "requestId": request_id}), DelaySeconds=360)
     except Exception:
         # Do not strand an account in a permanently blocked state if enqueue fails.
         prefs.delete_item(Key=key, ConditionExpression="requestId = :id", ExpressionAttributeValues={":id": request_id})

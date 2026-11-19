@@ -45,15 +45,26 @@ class GuardTests(unittest.TestCase):
         self.assertEqual(response_json(response)["code"], "LEGAL_ACCEPTANCE_REQUIRED")
         self.assertEqual(store.get_item.call_args.kwargs["ConsistentRead"], True)
 
+    def test_pending_deletion_blocks_writes(self):
+        store = MagicMock()
+        store.get_item.return_value = {"Item": {"status": "PENDING"}}
+        resource = MagicMock()
+        resource.Table.return_value = store
+        with patch.dict(os.environ, ENV), patch("legal_guard.boto3.resource", return_value=resource):
+            response = require_legal_acceptance(request())
+        self.assertEqual(response["statusCode"], 423)
+        self.assertEqual(response_json(response)["code"], "ACCOUNT_DELETION_PENDING")
+
     def test_both_documents_required_and_bound_to_user(self):
         store = MagicMock()
-        store.get_item.side_effect = [{"Item": {"acceptedAt": "now"}}, {"Item": {"acceptedAt": "now"}}]
+        store.get_item.side_effect = [{}, {"Item": {"acceptedAt": "now"}}, {"Item": {"acceptedAt": "now"}}]
         resource = MagicMock()
         resource.Table.return_value = store
         with patch.dict(os.environ, ENV), patch("legal_guard.boto3.resource", return_value=resource):
             self.assertIsNone(require_legal_acceptance(request(sub="different-user")))
         keys = [call.kwargs["Key"] for call in store.get_item.call_args_list]
         self.assertEqual(keys, [
+            {"pk": "USER#different-user", "sk": "ACCOUNT#DELETION"},
             {"pk": "USER#different-user", "sk": "LEGAL#terms#1.2"},
             {"pk": "USER#different-user", "sk": "LEGAL#privacy#1.2"},
         ])
