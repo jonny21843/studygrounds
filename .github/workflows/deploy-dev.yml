@@ -36,12 +36,32 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(aws sts get-caller-identity --query Account --output text)" = "248189942252"
-          test "$(aws sts get-caller-identity --query Arn --output text | grep -c 'assumed-role/StudyGroundsDevDeploy/')" -ge 1
+          account="$(aws sts get-caller-identity --query Account --output text)"
+          role_arn="$(aws sts get-caller-identity --query Arn --output text)"
+          echo "AWS account: $account"
+          echo "Assumed role: ${role_arn%%/*}/*"
+          if [[ "$account" != "248189942252" ]]; then
+            echo "::error::Unexpected AWS account for DEV deploy."
+            exit 1
+          fi
+          if [[ "$role_arn" != *":assumed-role/StudyGroundsDevDeploy/"* ]]; then
+            echo "::error::DEV deployment is not using StudyGroundsDevDeploy."
+            exit 1
+          fi
           stack_status="$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].StackStatus' --output text)"
-          [[ "$stack_status" == "CREATE_COMPLETE" || "$stack_status" == "UPDATE_COMPLETE" ]]
+          echo "DEV stack status: $stack_status"
+          case "$stack_status" in
+            CREATE_COMPLETE|UPDATE_COMPLETE|UPDATE_ROLLBACK_COMPLETE) ;;
+            *)
+              echo "::error::DEV CloudFormation stack is not in an updateable state: $stack_status"
+              exit 1
+              ;;
+          esac
           api_url="$(aws cloudformation describe-stacks --stack-name notes-app-dev --region us-east-2 --query 'Stacks[0].Outputs[?OutputKey==`ApiBaseUrl`].OutputValue | [0]' --output text)"
-          test "$api_url" = "https://nxa9uz2cv0.execute-api.us-east-2.amazonaws.com"
+          if [[ "$api_url" != "https://nxa9uz2cv0.execute-api.us-east-2.amazonaws.com" ]]; then
+            echo "::error::DEV API output differs from the expected API URL."
+            exit 1
+          fi
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
