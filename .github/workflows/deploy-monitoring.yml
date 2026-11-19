@@ -1,0 +1,150 @@
+# Separate operational monitoring stack. Does not modify the StudyGrounds application stack.
+# DEV auto-deploys once its one-time monitoring IAM bootstrap exists.
+# PROD is manual-only and MUST be dispatched against main after release approval.
+name: Deploy StudyGrounds monitoring
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "infrastructure/monitoring.yaml"
+      - ".github/workflows/deploy-monitoring.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Monitoring environment (PROD requires main branch and explicit dispatch)"
+        required: true
+        type: choice
+        default: dev
+        options: [dev, prod]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: studygrounds-monitoring-${{ inputs.target || 'dev' }}
+  cancel-in-progress: false
+
+jobs:
+  monitoring:
+    name: Deploy separate monitoring stack
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.target == 'prod' && 'production' || 'development' }}
+    steps:
+      - name: Enforce branch and target boundaries
+        shell: bash
+        env:
+          REQUESTED_TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          target="${REQUESTED_TARGET:-dev}"
+          if [[ "$target" == "prod" && "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "PROD monitoring only runs manually from main." >&2
+            exit 1
+          fi
+          if [[ "$target" == "dev" && "${GITHUB_REF}" != "refs/heads/develop" ]]; then
+            echo "DEV monitoring only runs from develop." >&2
+            exit 1
+          fi
+          echo "TARGET=$target" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with existing environment GitHub role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Check AWS account, role and one-time bootstrap
+        id: bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(aws sts get-caller-identity --query Account --output text)" = "248189942252"
+          if [[ "$TARGET" == "prod" ]]; then
+            expected_role="StudyGroundsProductionDeploy"
+          else
+            expected_role="StudyGroundsDevDeploy"
+          fi
+          arn="$(aws sts get-caller-identity --query Arn --output text)"
+          [[ "$arn" == *":assumed-role/$expected_role/"* ]]
+          bootstrap="studygrounds-$TARGET-monitoring-bootstrap"
+          if ! aws cloudformation describe-stacks --stack-name "$bootstrap" --region us-east-2 --query 'Stacks[0].StackStatus' --output text > /tmp/monitoring-bootstrap-state 2>/dev/null; then
+            echo "One-time $bootstrap IAM bootstrap has not been deployed; skipping monitoring deployment."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          status="$(cat /tmp/monitoring-bootstrap-state)"
+          [[ "$status" == "CREATE_COMPLETE" || "$status" == "UPDATE_COMPLETE" ]]
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Read actual existing application stack physical IDs
+        if: steps.bootstrap.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$TARGET" == "prod" ]]; then
+            app_stack="studygrounds-prod"
+            role_name="StudyGroundsProdMonitoringExecutionRole"
+            known_api="vhtlpng5e3"
+          else
+            app_stack="notes-app-dev"
+            role_name="StudyGroundsDevMonitoringExecutionRole"
+            known_api="nxa9uz2cv0"
+          fi
+          stack_status="$(aws cloudformation describe-stacks --stack-name "$app_stack" --region us-east-2 --query 'Stacks[0].StackStatus' --output text)"
+          [[ "$stack_status" == "CREATE_COMPLETE" || "$stack_status" == "UPDATE_COMPLETE" ]]
+          resolve() {
+            aws cloudformation list-stack-resources --stack-name "$app_stack" --region us-east-2 \
+              --query "StackResourceSummaries[?LogicalResourceId=='$1'].PhysicalResourceId | [0]" --output text
+          }
+          api_id="$(resolve NotesApi)"
+          malware_fn="$(resolve MalwareScanResultFunction)"
+          upload_fn="$(resolve CreateUploadFunction)"
+          bucket="$(resolve NotesBucket)"
+          test "$api_id" = "$known_api"
+          for value in "$malware_fn" "$upload_fn" "$bucket"; do
+            test -n "$value"
+            test "$value" != "None"
+          done
+          {
+            echo "APP_API_ID=$api_id"
+            echo "APP_MALWARE_FN=$malware_fn"
+            echo "APP_UPLOAD_FN=$upload_fn"
+            echo "APP_NOTES_BUCKET=$bucket"
+            echo "MONITORING_EXEC_ROLE=arn:aws:iam::248189942252:role/$role_name"
+          } >> "$GITHUB_ENV"
+
+      - name: Deploy separate environment monitoring stack
+        if: steps.bootstrap.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation deploy \
+            --template-file infrastructure/monitoring.yaml \
+            --stack-name "studygrounds-$TARGET-observability" \
+            --region us-east-2 \
+            --role-arn "$MONITORING_EXEC_ROLE" \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              EnvironmentName="$TARGET" \
+              AlertEmail=jonathan.feagans@outlook.com \
+              ApiId="$APP_API_ID" \
+              MalwareFunctionName="$APP_MALWARE_FN" \
+              UploadFunctionName="$APP_UPLOAD_FN" \
+              NotesBucketName="$APP_NOTES_BUCKET"
+          state="$(aws cloudformation describe-stacks --stack-name "studygrounds-$TARGET-observability" --query 'Stacks[0].StackStatus' --output text)"
+          [[ "$state" == "CREATE_COMPLETE" || "$state" == "UPDATE_COMPLETE" ]]
+
+      - name: Monitoring rollout summary
+        shell: bash
+        env:
+          READY: ${{ steps.bootstrap.outputs.ready }}
+        run: |
+          if [[ "$READY" == "true" ]]; then
+            echo "Monitoring stack configured for $TARGET. Confirm the SNS email subscription if prompted." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Monitoring for $TARGET is not active yet; deploy the one-time scoped monitoring IAM bootstrap first." >> "$GITHUB_STEP_SUMMARY"
+          fi
