@@ -49,3 +49,15 @@ Subsequent Terms and Privacy revisions **do not repeat** the age prompt;
 only policy versions with outstanding acknowledgements are shown.
 This is a self-attestation, not proof of age. Direct use of Cognito's hosted
 signup remains a separate enforcement gap before a production release.
+
+## Signup age declaration display
+
+The StudyGrounds signup button records a session-scoped, non-authoritative
+flag after a user affirms age before being redirected to Cognito. On return,
+that flag suppresses a **duplicate** age checkbox in the initial legal popup;
+the backend still requires an affirmative `age13OrOlder: true` on first
+legal acceptance and records the independent account fact. A bypassed or
+external Cognito signup must confirm age after authentication. The signup
+flag is cleared on successful acceptance, signout, or existing-account login.
+Settings displays the user's own opaque account ID to facilitate a safe DEV
+account-deletion verification without exposing another user's data.

@@ -67,10 +67,11 @@ function showLegalGate(message = "") {
                         privacyVersion: legalStatus.documents.privacy.version,
                         agreeToTerms: legalStatus.documents.terms.accepted || gate.querySelector("#legal-agree").checked,
                         acknowledgePrivacy: legalStatus.documents.privacy.accepted || gate.querySelector("#legal-privacy").checked,
-                        ...(legalStatus.ageConfirmed ? {} : {age13OrOlder: gate.querySelector("#legal-age").checked})
+                        ...(legalStatus.ageConfirmed ? {} : {age13OrOlder: sessionStorage.getItem("studygrounds_signup_age_confirmed") === "1" || gate.querySelector("#legal-age").checked})
                     })
                 });
                 if (!response.ok) throw new Error((await response.json()).error || "Could not save acceptance.");
+                sessionStorage.removeItem("studygrounds_signup_age_confirmed");
                 await checkLegalStatus();
                 if (!document.getElementById("legal-gate")) window.location.reload();
             } catch (error) {
@@ -83,7 +84,7 @@ function showLegalGate(message = "") {
         gate.querySelector("#legal-terms-version").textContent = legalStatus.documents.terms.version;
         gate.querySelector("#legal-privacy-version").textContent = legalStatus.documents.privacy.version;
         for (const [row, checkbox, needed] of [
-            ["legal-age-row", "legal-age", !legalStatus.ageConfirmed],
+            ["legal-age-row", "legal-age", !legalStatus.ageConfirmed && sessionStorage.getItem("studygrounds_signup_age_confirmed") !== "1"],
             ["legal-terms-row", "legal-agree", !legalStatus.documents.terms.accepted],
             ["legal-privacy-row", "legal-privacy", !legalStatus.documents.privacy.accepted]
         ]) {

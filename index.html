@@ -717,6 +717,11 @@
             <section class="card" aria-labelledby="account-privacy-title">
                 <h3 id="account-privacy-title">Privacy &amp; Data</h3>
                 <p class="note-description">Your private notes remain private until you publish them. You may request permanent account deletion, including your notes, source uploads, saved notes, study activity, and account profile. Some security or legal records and backup copies can remain for a limited period where necessary.</p>
+                <div class="settings-profile-action">
+                    <span class="note-description">Your account ID: <code id="settings-account-id">Loading…</code></span>
+                    <button id="settings-copy-account-id" class="button button-secondary" type="button">Copy account ID</button>
+                </div>
+                <p id="settings-account-id-status" class="status-text" aria-live="polite"></p>
                 <button id="account-delete-open" class="button button-secondary" type="button">Delete my account</button>
                 <form id="account-delete-form" hidden>
                     <p><strong>Permanent action:</strong> This removes access to your StudyGrounds account and starts deletion of its data. You will be signed out after submission and cannot undo it.</p>

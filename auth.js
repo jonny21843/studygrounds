@@ -52,8 +52,14 @@ function signIn() {
     const create = overlay.querySelector("#age-new");
     age.addEventListener("change", () => {create.disabled = !age.checked;});
     overlay.querySelector("#age-cancel").addEventListener("click", () => overlay.remove());
-    overlay.querySelector("#age-existing").addEventListener("click", () => startHostedAuth("authorize"));
-    create.addEventListener("click", () => {if (age.checked) startHostedAuth("signup");});
+    overlay.querySelector("#age-existing").addEventListener("click", () => {sessionStorage.removeItem("studygrounds_signup_age_confirmed"); startHostedAuth("authorize");});
+    create.addEventListener("click", () => {
+        if (!age.checked) return;
+        // Session-scoped UI confirmation survives Cognito; backend still
+        // requires affirmative proof on first legal acceptance.
+        sessionStorage.setItem("studygrounds_signup_age_confirmed", "1");
+        startHostedAuth("signup");
+    });
     overlay.querySelector("#age-existing").focus();
 }
 
@@ -88,6 +94,7 @@ function clearTokens() {
 }
 
 function signOut() {
+    sessionStorage.removeItem("studygrounds_signup_age_confirmed");
     clearTokens();
 
     const params = new URLSearchParams({

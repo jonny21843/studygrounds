@@ -762,6 +762,11 @@ function setActiveView(view, options = {}) {
     document.getElementById("saved-notes-view").hidden = view !== "saved-notes";
     document.getElementById("study-history-view").hidden = view !== "study-history";
     document.getElementById("settings-view").hidden = view !== "settings";
+    if (view === "settings" && isAuthenticated()) {
+        const accountId = document.getElementById("settings-account-id");
+        const claims = decodeJwtPayload(sessionStorage.getItem("id_token"));
+        accountId.textContent = claims?.sub || "Unavailable";
+    }
     document.getElementById("admin-overview-view").hidden = view !== "admin-overview";
     document.getElementById("analytics-view").hidden = view !== "analytics";
     document.getElementById("security-view").hidden = view !== "security";
@@ -4795,6 +4800,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         setActiveView("explore");
     });
     document.getElementById("settings-tab").addEventListener("click", () => setActiveView("settings"));
+    document.getElementById("settings-copy-account-id").addEventListener("click", async () => {
+        const status = document.getElementById("settings-account-id-status");
+        const value = document.getElementById("settings-account-id").textContent;
+        if (!value || value === "Loading…" || value === "Unavailable") {
+            status.textContent = "Account ID unavailable. Please try again.";
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(value);
+            status.textContent = "Account ID copied. Save it before testing account deletion.";
+        } catch (_) {
+            status.textContent = "Select and copy the account ID shown above.";
+        }
+    });
     document.getElementById("account-delete-open").addEventListener("click", () => {
         document.getElementById("account-delete-form").hidden = false;
         document.getElementById("account-delete-open").hidden = true;
