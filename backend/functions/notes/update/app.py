@@ -34,6 +34,9 @@ def current_user_id(event):
     )
 
 
+LANGUAGE_CODES = {"und", "en", "es", "fr", "de", "pt", "it", "ja", "zh", "ko", "ar", "hi", "mul"}
+
+
 def lambda_handler(event, context):
     user_id = current_user_id(event)
     if not user_id:
@@ -52,6 +55,9 @@ def lambda_handler(event, context):
     subject = (payload.get("subject") or "").strip()
     collection = (payload.get("collection") or "").strip()
     description = (payload.get("description") or "").strip()
+    language = payload.get("language")
+    if language is not None and (not isinstance(language, str) or language not in LANGUAGE_CODES):
+        return response(400, {"error": "Choose a valid note language"})
 
     if not title:
         return response(400, {"error": "title is required"})
@@ -69,23 +75,27 @@ def lambda_handler(event, context):
         return response(400, {"error": "description must be 1200 characters or fewer"})
 
     now = datetime.now(timezone.utc).isoformat()
+    # Older API clients may omit language: preserve the existing saved selection.
+    language_update = ", #language = :language" if language is not None else ""
+    names = {"#collection": "collection"}
+    values = {
+        ":title": title, ":subject": subject, ":collection": collection,
+        ":description": description, ":updated": now,
+    }
+    if language is not None:
+        names["#language"] = "language"
+        values[":language"] = language
 
     try:
         result = table.update_item(
             Key={"userId": user_id, "noteId": note_id},
             UpdateExpression=(
                 "SET title = :title, subject = :subject, #collection = :collection, "
-                "description = :description, updatedAt = :updated"
+                "description = :description, updatedAt = :updated" + language_update
             ),
             ConditionExpression="attribute_exists(userId) AND attribute_exists(noteId)",
-            ExpressionAttributeNames={"#collection": "collection"},
-            ExpressionAttributeValues={
-                ":title": title,
-                ":subject": subject,
-                ":collection": collection,
-                ":description": description,
-                ":updated": now,
-            },
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
             ReturnValues="ALL_NEW",
         )
     except ClientError as error:

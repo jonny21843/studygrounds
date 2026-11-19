@@ -92,6 +92,7 @@ def public_projection(note):
         "title": note.get("title", ""),
         "subject": note.get("subject", ""),
         "collection": note.get("collection", ""),
+        "language": note.get("language") or "und",
         "description": note.get("description", ""),
         "publicAuthor": note.get("publicAuthor", "Community member"),
         "contributorId": contributor_id(note),
@@ -132,6 +133,10 @@ def lambda_handler(event, context):
     query = (params.get("q") or "").strip()[:200]
     subject = (params.get("subject") or "").strip().lower()
     collection = (params.get("collection") or "").strip().lower()
+    language = (params.get("language") or "").strip().lower()
+    allowed_languages = {"und", "en", "es", "fr", "de", "pt", "it", "ja", "zh", "ko", "ar", "hi", "mul"}
+    if language and language not in allowed_languages:
+        return response(400, {"error": "Invalid language filter"})
     sort = (params.get("sort") or "newest").strip().lower()
     if sort not in {"newest", "oldest", "title", "views", "helpful", "trending", "relevance"}:
         return response(400, {"error": "Invalid sort"})
@@ -181,6 +186,7 @@ def lambda_handler(event, context):
         key=str.lower,
     )
 
+    languages = sorted({note.get("language") or "und" for note in all_public})
     subject_topics = {}
     for note in all_public:
         subject_value = (note.get("subject") or "").strip()
@@ -212,6 +218,9 @@ def lambda_handler(event, context):
             for note in notes
             if (note.get("collection") or "").strip().lower() == collection
         ]
+
+    if language:
+        notes = [note for note in notes if (note.get("language") or "und") == language]
 
     if sort == "relevance":
         notes.sort(
@@ -256,6 +265,7 @@ def lambda_handler(event, context):
             "notes": [public_projection(note) for note in page_notes],
             "subjects": subjects,
             "collections": collections,
+            "languages": languages,
             "subjectTopics": subject_topics,
             "page": page,
             "pageSize": page_size,

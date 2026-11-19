@@ -27,6 +27,16 @@ def current_user_id(event):
     )
 
 
+LANGUAGE_CODES = {"und", "en", "es", "fr", "de", "pt", "it", "ja", "zh", "ko", "ar", "hi", "mul"}
+
+
+def parse_language(payload):
+    value = payload.get("language", "und")
+    if not isinstance(value, str) or value not in LANGUAGE_CODES:
+        return None
+    return value
+
+
 def lambda_handler(event, context):
     user_id = current_user_id(event)
     if not user_id:
@@ -41,6 +51,9 @@ def lambda_handler(event, context):
     subject = (payload.get("subject") or "").strip()
     collection = (payload.get("collection") or "").strip()
     description = (payload.get("description") or "").strip()
+    language = parse_language(payload)
+    if language is None:
+        return response(400, {"error": "Choose a valid note language"})
 
     if not title:
         return response(400, {"error": "title is required"})
@@ -67,6 +80,7 @@ def lambda_handler(event, context):
         "subject": subject,
         "collection": collection,
         "description": description,
+        "language": language,
         "files": [],
         "visibility": "private",
         "processingStatus": "created",

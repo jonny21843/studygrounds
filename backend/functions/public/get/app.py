@@ -620,6 +620,7 @@ def lambda_handler(event, context):
                 "title": note.get("title", ""),
                 "subject": note.get("subject", ""),
                 "collection": note.get("collection", ""),
+                "language": note.get("language") or "und",
                 "description": note.get("description", ""),
                 "publicAuthor": note.get("publicAuthor", "Community member"),
                 "contributorId": hashlib.sha256(

@@ -42,6 +42,7 @@ def note_projection(note):
         "title": note.get("title") or "",
         "subject": note.get("subject") or "",
         "collection": note.get("collection") or "",
+        "language": note.get("language") or "und",
         "description": note.get("description") or "",
         "publishedAt": note.get("publishedAt"),
         "fileCount": len(safe_files(note)),
@@ -59,8 +60,8 @@ def lambda_handler(event, context):
     scan_args = {
         "FilterExpression": Attr("visibility").eq("public"),
         # Keep response small while retrieving only fields needed for the profile.
-        "ProjectionExpression": "userId, noteId, title, subject, #topic, description, publicAuthor, publishedAt, #files, viewCount, helpfulCount, visibility, moderationHold",
-        "ExpressionAttributeNames": {"#files": "files", "#topic": "collection"},
+        "ProjectionExpression": "userId, noteId, title, subject, #topic, #language, description, publicAuthor, publishedAt, #files, viewCount, helpfulCount, visibility, moderationHold",
+        "ExpressionAttributeNames": {"#files": "files", "#topic": "collection", "#language": "language"},
     }
 
     while True:
