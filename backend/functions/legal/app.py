@@ -38,12 +38,14 @@ def lambda_handler(event, context):
         payload = json.loads(event.get("body") or "{}")
     except (TypeError, ValueError):
         return respond(400, {"error": "Invalid JSON"})
-    if not isinstance(payload, dict) or set(payload) != {"termsVersion", "privacyVersion", "agreeToTerms", "acknowledgePrivacy"}:
+    if not isinstance(payload, dict) or set(payload) != {"termsVersion", "privacyVersion", "agreeToTerms", "acknowledgePrivacy", "age13OrOlder"}:
         return respond(400, {"error": "Both document versions and confirmations are required"})
     if payload["termsVersion"] != DOCUMENTS["terms"]["version"] or payload["privacyVersion"] != DOCUMENTS["privacy"]["version"]:
         return respond(409, {"error": "Documents have changed. Please review current versions."})
     if payload["agreeToTerms"] is not True or payload["acknowledgePrivacy"] is not True:
         return respond(400, {"error": "Affirmative agreement and acknowledgement required"})
+    if payload["age13OrOlder"] is not True:
+        return respond(403, {"error": "StudyGrounds accounts are available only to people age 13 or older."})
     now = datetime.now(timezone.utc).isoformat()
     for name in ("terms", "privacy"):
         doc = DOCUMENTS[name]
@@ -56,6 +58,7 @@ def lambda_handler(event, context):
                 "effectiveDate": doc["effectiveDate"],
                 "acceptedAt": now,
                 "action": "agreed" if name == "terms" else "acknowledged",
+                **({"age13OrOlderConfirmed": True} if name == "terms" else {}),
             }, ConditionExpression="attribute_not_exists(pk) AND attribute_not_exists(sk)")
         except ClientError as exc:
             if exc.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
