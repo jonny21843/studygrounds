@@ -1,5 +1,6 @@
 """Public profile validation and identity isolation regression tests."""
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -37,6 +38,10 @@ class PublicProfileTests(unittest.TestCase):
         self.assertEqual(profile["publicAuthor"], "Taylor E.")
         self.assertEqual(profile["avatarStyle"], "indigo")
         self.assertEqual(profile["bio"], "")
+        expected = hashlib.sha256(b"studygrounds:contributor:v1:private-user-id").hexdigest()
+        self.assertEqual(profile["contributorId"], expected)
+        self.assertEqual(len(profile["contributorId"]), 64)
+        self.assertNotIn("private-user-id", json.dumps(profile))
         self.profiles.get_item.assert_called_with(
             Key={"pk":"USER#private-user-id","sk":"PUBLIC_PROFILE"},ConsistentRead=True)
 
@@ -47,6 +52,10 @@ class PublicProfileTests(unittest.TestCase):
         }), None)
         self.assertEqual(response["statusCode"], 200)
         self.assertEqual(json.loads(response["body"])["profile"]["bio"], "Love biology and science!")
+        self.assertEqual(
+            json.loads(response["body"])["profile"]["contributorId"],
+            hashlib.sha256(b"studygrounds:contributor:v1:private-user-id").hexdigest(),
+        )
         self.profiles.put_item.assert_called_once()
         self.assertEqual(self.profiles.put_item.call_args.kwargs["Item"]["pk"], "USER#private-user-id")
         self.assertNotIn("private-user-id", response["body"])

@@ -51,6 +51,8 @@ const ctx = {
     loadAdminSecurity:() => {},
     loadAdminModeration:() => {},
     loadAdminFeedback:() => {},
+    loadMyProfileStats:() => {calls.profile = (calls.profile || 0) + 1;},
+    myProfileStatsVersion: 0,
     notificationsOpen: false,
     toggleNotifications:() => {}
 };
@@ -96,6 +98,7 @@ assert.equal(ctx.homeRequestCurrent(homeRequest, token), false, "old Home result
 ctx.setActiveView("explore");
 assert.equal(calls.explore, 1);
 ctx.setActiveView("settings");
+assert.equal(calls.profile, 1, "settings should load personal contribution statistics");
 element("settings-profile-status").textContent = "Saved. Public notes will show Jons T.";
 ctx.setActiveView("home");
 assert.equal(element("settings-profile-status").textContent, "", "Save message must clear when leaving Settings");
@@ -107,7 +110,7 @@ state.isAdmin = false;
 ctx.setActiveView("security");
 assert.equal(state.activeView, "home", "non-admin cannot enter an admin view");
 
-for (const id of ["home-continue-list","home-saved-list","home-trending-list","home-study-all","home-saved-all","home-trending-all"]) {
+for (const id of ["settings-open-public-profile","settings-published-total","settings-helpful-total","settings-subjects-total","settings-contributions-status","home-continue-list","home-saved-list","home-trending-list","home-study-all","home-saved-all","home-trending-all"]) {
     assert(html.includes('id="' + id + '"'), "Missing Home dashboard target " + id);
 }
 console.log("Navigation and Home regression assertions passed.");
