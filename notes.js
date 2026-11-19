@@ -350,6 +350,7 @@ async function adminFetch(path, options = {}) {
     const headers = new Headers(options.headers || {});
     headers.set("Authorization", `Bearer ${token}`);
     const response = await fetch(apiUrl(path), { ...options, headers });
+    if (response.status === 428) await ensureLegalAcceptance();
     if (response.status === 401 && sessionStorage.getItem("id_token") === token) {
         expireLocalSession();
         throw new Error("Your session expired. Please sign in again.");
@@ -4729,6 +4730,8 @@ window.addEventListener("focus", () => {
 
 document.addEventListener("DOMContentLoaded", async () => {
     renderSignedInState();
+    // Check legal status before loading authenticated application data.
+    if (isAuthenticated() && !(await ensureLegalAcceptance())) return;
     await loadPublicTaxonomy();
 
     document.getElementById("hero-sign-in-btn").addEventListener("click", signIn);
