@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 """Per-account study progress and explicit sessions; no document content stored."""
 import json
 import os
@@ -437,6 +438,9 @@ def delete_annotation(user_id, note_id, annotation_id):
 
 
 def lambda_handler(event, context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     user_id = user_from_event(event)
     if not user_id:
         return response(401, {"error": "Sign in to access study history."})
