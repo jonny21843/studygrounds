@@ -3433,3 +3433,12 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
     .reader-preferences-bar { display:flex; flex-wrap:wrap; gap:10px; }
     .reader-source-toolbar { flex-wrap:wrap; gap:8px; }
 }
+
+/* Legal documents and mandatory review */
+.legal-footer { display:flex; flex-wrap:wrap; gap:1.5rem; justify-content:center; padding:2rem 1rem; }
+.legal-gate { position:fixed; inset:0; z-index:99999; background:rgba(10,18,35,.85); display:flex; align-items:center; justify-content:center; padding:1rem; overflow-y:auto; }
+.legal-gate-dialog { width:min(100%,580px); max-height:calc(100vh - 2rem); overflow-y:auto; background:var(--surface,#fff); color:var(--text,#19283a); padding:clamp(1.25rem,4vw,2rem); border-radius:1rem; box-shadow:0 16px 55px rgba(0,0,0,.3); }
+.legal-gate-dialog form { display:grid; gap:1rem; }
+.legal-gate-dialog label { display:flex; align-items:flex-start; gap:.65rem; }
+.legal-gate-dialog input[type=checkbox] { width:1.2rem; height:1.2rem; flex-shrink:0; }
+.legal-gate-dialog a { text-decoration:underline; }
