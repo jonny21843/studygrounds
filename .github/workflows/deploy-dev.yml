@@ -174,17 +174,12 @@ jobs:
           set -euo pipefail
           bucket="studygrounds-frontend-frontendbucket-5jnigqnmskgt"
           for asset in index.html styles.css notes.js auth/callback.html; do
-            aws s3api head-object --bucket "$bucket" --key "$asset" \
-              --query ContentLength --output text | grep -E '^[1-9][0-9]*
-          aws cloudfront create-invalidation \
-            --distribution-id E1O78RFI5U6N8S \
-            --paths "/*"
-
-
+            size=$(aws s3api head-object --bucket "$bucket" --key "$asset" --query ContentLength --output text)
+            test "$size" -gt 0
           done
           for asset in index.html styles.css notes.js; do
-            aws s3 cp "s3://$bucket/$asset" "/tmp/studygrounds-${asset//\//-}" --only-show-errors
-            cmp "dist/$asset" "/tmp/studygrounds-${asset//\//-}"
+            aws s3 cp "s3://$bucket/$asset" "/tmp/studygrounds-$asset" --only-show-errors
+            cmp "dist/$asset" "/tmp/studygrounds-$asset"
           done
           echo "DEV frontend artifact smoke checks passed."
 
