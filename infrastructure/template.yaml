@@ -95,6 +95,9 @@ Resources:
   PreferencesTable:
     Type: AWS::DynamoDB::Table
     Properties:
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
       TableName: !If [UseExplicitResourceNames, !Sub "${ResourceNamePrefix}-preferences", !Ref "AWS::NoValue"]
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
@@ -617,9 +620,13 @@ Resources:
       Environment:
         Variables:
           NOTES_TABLE: !Ref NotesTable
+          PREFERENCES_TABLE: !Ref PreferencesTable
+          MAX_DAILY_NOTES: "30"
       Policies:
         - DynamoDBWritePolicy:
             TableName: !Ref NotesTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref PreferencesTable
       Events:
         CreateNote:
           Type: HttpApi
@@ -699,11 +706,15 @@ Resources:
           SECURITY_TABLE: !Ref UserSecurityTable
           MAX_FILE_BYTES: 20971520
           MAX_FILES_PER_NOTE: 10
+          PREFERENCES_TABLE: !Ref PreferencesTable
+          MAX_DAILY_UPLOAD_REQUESTS: "30"
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
         - DynamoDBReadPolicy:
             TableName: !Ref UserSecurityTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref PreferencesTable
         - S3WritePolicy:
             BucketName: !Ref NotesBucket
       Events:
@@ -904,11 +915,15 @@ Resources:
         Variables:
           NOTES_TABLE: !Ref NotesTable
           REPORTS_TABLE: !Ref ModerationReportsTable
+          PREFERENCES_TABLE: !Ref PreferencesTable
+          MAX_DAILY_REPORTS: "10"
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref NotesTable
         - DynamoDBCrudPolicy:
             TableName: !Ref ModerationReportsTable
+        - DynamoDBWritePolicy:
+            TableName: !Ref PreferencesTable
       Events:
         ReportPublicNote:
           Type: HttpApi

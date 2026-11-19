@@ -11,6 +11,7 @@ from botocore.config import Config
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["NOTES_TABLE"])
 security_table = dynamodb.Table(os.environ["SECURITY_TABLE"])
+quota_table = dynamodb.Table(os.environ.get("PREFERENCES_TABLE", "studygrounds-quota-test"))
 bucket_name = os.environ["NOTES_BUCKET"]
 aws_region = os.environ.get("AWS_REGION", "us-east-2")
 max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(20 * 1024 * 1024)))
@@ -92,6 +93,26 @@ def file_extension(filename):
     return ""
 
 
+
+def reserve_daily_action(user_id, action, limit):
+    """UTC-day per-account counter; DynamoDB conditional updates are atomic."""
+    now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        quota_table.update_item(
+            Key={"pk": "USER#" + user_id, "sk": "QUOTA#" + day + "#" + action},
+            UpdateExpression="ADD #used :one SET expiresAt = :expires",
+            ConditionExpression="attribute_not_exists(#used) OR #used < :limit",
+            ExpressionAttributeNames={"#used": "used"},
+            ExpressionAttributeValues={":one": 1, ":limit": limit, ":expires": int(midnight.timestamp()) + 3 * 86400},
+        )
+        return True
+    except Exception as error:
+        if getattr(error, "response", {}).get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
+
 def lambda_handler(event, context):
     user_id = current_user_id(event)
     if not user_id:
@@ -161,6 +182,9 @@ def lambda_handler(event, context):
             400,
             {"error": f"File is too large. Maximum size is {max_file_bytes // (1024 * 1024)} MB"},
         )
+
+    if not reserve_daily_action(user_id, "upload", int(os.environ.get("MAX_DAILY_UPLOAD_REQUESTS", "30"))):
+        return response(429, {"error": "Daily upload request limit reached. Try again tomorrow (UTC).", "code": "DAILY_UPLOAD_LIMIT"})
 
     object_id = str(uuid.uuid4())
     key = f"users/{user_id}/notes/{note_id}/original/{object_id}-{filename}"

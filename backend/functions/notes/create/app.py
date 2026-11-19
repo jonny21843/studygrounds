@@ -7,6 +7,7 @@ import boto3
 
 
 table = boto3.resource("dynamodb").Table(os.environ["NOTES_TABLE"])
+quota_table = boto3.resource("dynamodb").Table(os.environ.get("PREFERENCES_TABLE", "studygrounds-quota-test"))
 
 
 def response(status_code, body):
@@ -36,6 +37,26 @@ def parse_language(payload):
         return None
     return value
 
+
+
+def reserve_daily_action(user_id, action, limit):
+    """UTC-day per-account counter; DynamoDB conditional updates are atomic."""
+    now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        quota_table.update_item(
+            Key={"pk": "USER#" + user_id, "sk": "QUOTA#" + day + "#" + action},
+            UpdateExpression="ADD #used :one SET expiresAt = :expires",
+            ConditionExpression="attribute_not_exists(#used) OR #used < :limit",
+            ExpressionAttributeNames={"#used": "used"},
+            ExpressionAttributeValues={":one": 1, ":limit": limit, ":expires": int(midnight.timestamp()) + 3 * 86400},
+        )
+        return True
+    except Exception as error:
+        if getattr(error, "response", {}).get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
 
 def lambda_handler(event, context):
     user_id = current_user_id(event)
@@ -87,6 +108,9 @@ def lambda_handler(event, context):
         "createdAt": now,
         "updatedAt": now,
     }
+
+    if not reserve_daily_action(user_id, "create", int(os.environ.get("MAX_DAILY_NOTES", "30"))):
+        return response(429, {"error": "Daily note creation limit reached. Try again tomorrow (UTC).", "code": "DAILY_NOTE_LIMIT"})
 
     table.put_item(
         Item=item,

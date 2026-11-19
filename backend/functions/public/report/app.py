@@ -10,6 +10,7 @@ from boto3.dynamodb.conditions import Key
 dynamodb = boto3.resource("dynamodb")
 notes_table = dynamodb.Table(os.environ["NOTES_TABLE"])
 reports_table = dynamodb.Table(os.environ["REPORTS_TABLE"])
+quota_table = dynamodb.Table(os.environ.get("PREFERENCES_TABLE", "studygrounds-quota-test"))
 
 ALLOWED_REASONS = {
     "spam",
@@ -54,6 +55,26 @@ def report_id_for(note_id, reporter_id):
     raw = f"{note_id}|{reporter_id}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
 
+
+
+def reserve_daily_action(user_id, action, limit):
+    """UTC-day per-account counter; DynamoDB conditional updates are atomic."""
+    now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    try:
+        quota_table.update_item(
+            Key={"pk": "USER#" + user_id, "sk": "QUOTA#" + day + "#" + action},
+            UpdateExpression="ADD #used :one SET expiresAt = :expires",
+            ConditionExpression="attribute_not_exists(#used) OR #used < :limit",
+            ExpressionAttributeNames={"#used": "used"},
+            ExpressionAttributeValues={":one": 1, ":limit": limit, ":expires": int(midnight.timestamp()) + 3 * 86400},
+        )
+        return True
+    except Exception as error:
+        if getattr(error, "response", {}).get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return False
+        raise
 
 def lambda_handler(event, context):
     note_id = ((event.get("pathParameters") or {}).get("noteId") or "").strip()
@@ -111,6 +132,12 @@ def lambda_handler(event, context):
         return response(400, {"error": "Choose a valid report reason."})
     if len(details) > 1000:
         return response(400, {"error": "Report details must be 1000 characters or fewer."})
+
+    if reports_table.get_item(Key={"reportId": report_id}).get("Item"):
+        return response(409, {"error": "You already reported this note.", "reported": True, "report": {"reportId": report_id}})
+
+    if not reserve_daily_action(reporter_id, "report", int(os.environ.get("MAX_DAILY_REPORTS", "10"))):
+        return response(429, {"error": "Daily reporting limit reached. Try again tomorrow (UTC).", "code": "DAILY_REPORT_LIMIT"})
 
     now = datetime.now(timezone.utc).isoformat()
 
