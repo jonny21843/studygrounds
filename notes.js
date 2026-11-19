@@ -2531,7 +2531,7 @@ function renderActivePublicFilters(query, subject, collection, sort) {
         {name: "query", label: query ? `Search: ${query}` : ""},
         {name: "subject", label: subject ? `Subject: ${subject}` : ""},
         {name: "collection", label: collection ? `Topic: ${collection}` : ""},
-        {name: "sort", label: sort !== "newest" ? `Sort: ${({oldest:"Oldest", title:"Title A–Z", views:"Most viewed", helpful:"Most helpful", trending:"Trending"})[sort] || sort}` : ""}
+        {name: "sort", label: sort !== "newest" ? `Sort: ${({relevance:"Best match", oldest:"Oldest", title:"Title A–Z", views:"Most viewed", helpful:"Most helpful", trending:"Trending"})[sort] || sort}` : ""}
     ].filter((filter) => filter.label);
     container.innerHTML = filters.length
         ? filters.map((filter) => `<button type="button" class="active-filter-chip active-filter-remove" data-clear-filter="${filter.name}" aria-label="Remove ${escapeHtml(filter.label)} filter">${escapeHtml(filter.label)} <span aria-hidden="true">×</span></button>`).join("")
@@ -2564,6 +2564,7 @@ async function loadPublicNotes() {
     document.getElementById("explore-trending").setAttribute("aria-pressed", String(sort === "trending"));
     const explanation = document.getElementById("explore-ranking-explanation");
     const descriptions = {
+        relevance: "Best match prioritizes note titles, then subjects, topics, contributor names, and descriptions.",
         trending: "Trending balances helpful votes, lifetime views, and publication recency. It does not track recent clicks or votes.",
         helpful: "Community favorites are ranked by helpful votes, with newer notes breaking ties."
     };
@@ -4620,10 +4621,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("create-note-form").addEventListener("submit", createNote);
     document.getElementById("note-upload-input").addEventListener("change", handleUploadSelection);
     setupSearchSelects();
-    document.getElementById("public-search-btn").addEventListener("click", () => {
+    const runExploreSearch = () => {
         notesState.publicPage = 1;
+        const sort = document.getElementById("public-sort");
+        const query = document.getElementById("public-search").value.trim();
+        if (query && (!sort.value || sort.value === "newest" || sort.value === "relevance")) {
+            sort.value = "relevance";
+        } else if (!query && sort.value === "relevance") {
+            sort.value = "newest";
+        }
         loadPublicNotes();
-    });
+    };
+    document.getElementById("public-search-btn").addEventListener("click", runExploreSearch);
     document.getElementById("public-search-clear").addEventListener("click", () => {
         exploreReturnScrollY = null;
         document.getElementById("public-search").value = "";
@@ -4686,8 +4695,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("public-search").addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
-            notesState.publicPage = 1;
-            loadPublicNotes();
+            event.preventDefault();
+            runExploreSearch();
         }
     });
     document.getElementById("close-public-contributor").addEventListener("click", backToExplore);
