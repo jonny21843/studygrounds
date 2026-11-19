@@ -103,9 +103,9 @@ jobs:
           resolve() {
             # Describe one logical resource directly. The paginated list-stack-resources
             # command can produce an extra 'None' line when --output text is used.
-            aws cloudformation describe-stack-resource --stack-name "$app_stack" \
+            aws cloudformation describe-stack-resources --stack-name "$app_stack" \
               --logical-resource-id "$1" --region us-east-2 \
-              --query "StackResourceDetail.PhysicalResourceId" --output text
+              --query "StackResources[0].PhysicalResourceId" --output text
           }
           api_id="$(resolve NotesApi)"
           malware_fn="$(resolve MalwareScanResultFunction)"
