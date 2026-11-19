@@ -121,7 +121,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/auth
-          cp index.html study-notes.html terms.html privacy.html community-guidelines.html robots.txt sitemap.xml styles.css auth.js legal.js notes.js tabs.js dist/
+          cp index.html study-notes.html terms.html privacy.html community-guidelines.html copyright.html robots.txt sitemap.xml styles.css auth.js legal.js notes.js tabs.js dist/
           cp auth/*.html auth/*.js dist/auth/
 
           cat > dist/config.js <<'EOF'
@@ -165,7 +165,7 @@ jobs:
         run: |
           set -euo pipefail
           bucket="studygrounds-prod-frontend-248189942252-us-east-1"
-          for page in terms.html privacy.html community-guidelines.html; do
+          for page in terms.html privacy.html community-guidelines.html copyright.html; do
             aws s3 cp "dist/$page" "s3://$bucket/$page" \
               --content-type "text/html; charset=utf-8" \
               --cache-control "no-cache,no-store,must-revalidate"
