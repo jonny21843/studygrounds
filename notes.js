@@ -854,6 +854,29 @@ function expireLocalSession() {
     updateAuthUi();
 }
 
+// Browse-first onboarding; dismissal is browser-local and scoped to the signed-in account.
+function welcomeGuideStorageKey() {
+    const sub = decodeJwtPayload(sessionStorage.getItem("id_token"))?.sub;
+    return sub ? "studygrounds.welcome.v1." + sub : null;
+}
+function updateWelcomeGuide() {
+    const guide = document.getElementById("home-welcome-guide");
+    if (!guide) return;
+    const key = isAuthenticated() ? welcomeGuideStorageKey() : null;
+    try {
+        guide.hidden = !key || localStorage.getItem(key) === "dismissed";
+    } catch {
+        guide.hidden = !key;
+    }
+}
+function dismissWelcomeGuide() {
+    const key = welcomeGuideStorageKey();
+    try {
+        if (key) localStorage.setItem(key, "dismissed");
+    } catch { /* Private browsing may disable storage; hiding still works. */ }
+    document.getElementById("home-welcome-guide").hidden = true;
+}
+
 function renderSignedInState() {
     const signedIn = isAuthenticated();
     if (!signedIn) {
@@ -892,6 +915,7 @@ function renderSignedInState() {
     document.getElementById("home-study-card").hidden = !signedIn;
     document.getElementById("home-sign-in").hidden = signedIn;
     document.getElementById("home-welcome").textContent = signedIn ? "Welcome back to StudyGrounds" : "Welcome to StudyGrounds";
+    updateWelcomeGuide();
     if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "feedback", ...ADMIN_VIEWS].includes(notesState.activeView)) {
         setActiveView("home");
     }
@@ -4646,6 +4670,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     document.getElementById("home-tab").addEventListener("click", () => setActiveView("home"));
     document.getElementById("home-explore").addEventListener("click", () => setActiveView("explore"));
+    document.getElementById("home-guide-explore").addEventListener("click", () => setActiveView("explore"));
+    document.getElementById("home-guide-saved").addEventListener("click", () => setActiveView("saved-notes"));
+    document.getElementById("home-guide-share").addEventListener("click", () => {setActiveView("my-notes"); document.getElementById("new-note-btn").click();});
+    document.getElementById("home-guide-dismiss").addEventListener("click", dismissWelcomeGuide);
     document.getElementById("home-sign-in").addEventListener("click", signIn);
     document.getElementById("home-history").addEventListener("click", () => setActiveView("study-history"));
     document.getElementById("home-saved").addEventListener("click", () => setActiveView("saved-notes"));
