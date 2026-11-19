@@ -15,6 +15,7 @@ on:
       - "terms.html"
       - "privacy.html"
       - "community-guidelines.html"
+      - "copyright.html"
       - "tabs.js"
       - "styles.css"
       - "auth/**"
