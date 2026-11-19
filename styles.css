@@ -3442,3 +3442,40 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 .legal-gate-dialog label { display:flex; align-items:flex-start; gap:.65rem; }
 .legal-gate-dialog input[type=checkbox] { width:1.2rem; height:1.2rem; flex-shrink:0; }
 .legal-gate-dialog a { text-decoration:underline; }
+
+/* Public legal pages: external styles required by CloudFront CSP (style-src 'self'). */
+.legal-document {
+    width: min(900px, calc(100% - 32px));
+    max-width: 900px;
+    margin: 2rem auto;
+    padding: clamp(1.25rem, 3vw, 2rem);
+    line-height: 1.7;
+}
+.legal-document h2 { margin-top: 1.75rem; }
+.legal-document hr { border: 0; border-top: 1px solid #dbe2ee; margin: 1.5rem 0 .5rem; }
+.legal-document .legal-links {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    column-gap: 1rem;
+    row-gap: .75rem;
+    padding: 1rem 0 .25rem;
+}
+.legal-document .legal-links a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: .55rem .9rem;
+    border: 1px solid #dbe2ee;
+    border-radius: .65rem;
+    background: #eff3fc;
+    color: #2347a2;
+    text-decoration: none;
+    font-weight: 600;
+}
+.legal-document .legal-links a:hover,
+.legal-document .legal-links a:focus-visible {
+    background: #e0eafd;
+    text-decoration: underline;
+}
