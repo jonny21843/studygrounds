@@ -3352,4 +3352,43 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 
 /* Manual note-language metadata, kept distinct from premium document processing. */
 .note-language-label { display:inline-block; margin-top:7px; padding:3px 9px; border:1px solid #d0d5dd; border-radius:99px; color:#475467; font-size:.78rem; }
-#note-language { width:100%; }
+/* Match the Subject/Topic field controls while keeping a native accessible select. */
+.note-language-select-wrap {
+    position: relative;
+    width: 100%;
+}
+#note-language {
+    display: block;
+    width: 100%;
+    min-height: 45px;
+    padding: 11px 55px 11px 12px;
+    border: 1px solid #d0d5dd;
+    border-radius: 10px;
+    outline: none;
+    background: #fff;
+    color: #344054;
+    font: inherit;
+    font-weight: 500;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+#note-language:focus-visible {
+    border-color: #4655d6;
+    box-shadow: 0 0 0 3px rgba(70, 85, 214, 0.12);
+}
+.note-language-select-wrap::after {
+    content: "⌄";
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    right: 1px;
+    width: 42px;
+    display: grid;
+    place-items: center;
+    border-left: 1px solid #eef1f5;
+    color: #475467;
+    font-size: 1rem;
+    font-weight: 600;
+    pointer-events: none;
+}
