@@ -50,7 +50,9 @@ const ctx = {
     loadAdminAnalytics:() => {},
     loadAdminSecurity:() => {},
     loadAdminModeration:() => {},
-    loadAdminFeedback:() => {}
+    loadAdminFeedback:() => {},
+    notificationsOpen: false,
+    toggleNotifications:() => {}
 };
 vm.createContext(ctx);
 vm.runInContext(section('const ADMIN_VIEWS = ', 'function isConfiguredAdmin()'), ctx);
