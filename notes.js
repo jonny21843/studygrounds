@@ -4266,6 +4266,7 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
                 <div class="public-note-hero-side">
                     <div class="public-note-byline">
                         ${note.contributorId ? `<a class="public-contributor-link" id="note-contributor-link" href="${escapeHtml(contributorShareUrl(note.contributorId))}">${escapeHtml(note.publicAuthor || "Community member")}</a>` : `<strong>${escapeHtml(note.publicAuthor || "Community member")}</strong>`}
+                        ${note.contributorId ? `<button id="more-by-contributor" type="button" class="button button-text">More from this contributor</button>` : ""}
                         <span>${Number(note.viewCount || 0)} view${Number(note.viewCount || 0) === 1 ? "" : "s"}</span>
                         <span id="public-helpful-count">${Number(note.helpfulCount || 0).toLocaleString()} helpful votes</span>
                         ${publishedDate ? `<span>Published ${escapeHtml(publishedDate)}</span>` : ""}
@@ -4414,6 +4415,7 @@ async function openPublicNote(noteId, updateUrl = true, preferredFileId = null) 
             event.preventDefault();
             openPublicContributor(note.contributorId);
         });
+        document.getElementById("more-by-contributor")?.addEventListener("click", () => openPublicContributor(note.contributorId));
         document.getElementById("share-public-note")?.addEventListener("click", (event) => sharePublicNote(noteId, note.title, event));
         const featureButton = document.getElementById("feature-public-note");
         if (featureButton) {
