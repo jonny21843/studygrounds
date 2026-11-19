@@ -111,7 +111,7 @@ class SavedNotesTests(TestCase):
         code, data = self.call("GET")
         self.assertEqual(code, 200)
         self.assertEqual(data["notes"][0], {
-            "noteId": NOTE, "available": False, "savedAt": "2026-11-16", "collection": ""
+            "noteId": NOTE, "available": False, "savedAt": "2026-11-16", "savedCollection": ""
         })
         self.assertNotIn("title", json.dumps(data))
         self.assertNotIn("userId", json.dumps(data))
@@ -145,10 +145,10 @@ class SavedNotesTests(TestCase):
         ]}
         code, body = self.call("GET")
         self.assertEqual(code, 200)
-        self.assertEqual(body["notes"][0]["collection"], "Cloud")
+        self.assertEqual(body["notes"][0]["savedCollection"], "Cloud")
         self.notes_table.get_item.return_value = {"Item": self.note("private")}
         code, body = self.call("GET")
-        self.assertEqual(body["notes"][0]["collection"], "Cloud")
+        self.assertEqual(body["notes"][0]["savedCollection"], "Cloud")
         self.assertFalse(body["notes"][0]["available"])
         self.assertNotIn("title", json.dumps(body))
 

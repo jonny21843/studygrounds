@@ -85,7 +85,7 @@ def note_projection(note, saved_at, collection=""):
         "viewCount": int(note.get("viewCount") or 0),
         "helpfulCount": max(0, int(note.get("helpfulCount") or 0)),
         "savedAt": saved_at,
-        "collection": collection,
+        "savedCollection": collection,
         "available": True,
     }
 
@@ -137,7 +137,7 @@ def list_saved(user_id, params):
                 "noteId": bookmark["noteId"],
                 "available": False,
                 "savedAt": bookmark.get("savedAt"),
-                "collection": bookmark.get("collection") or "",
+                "savedCollection": bookmark.get("collection") or "",
             })
 
     last = result.get("LastEvaluatedKey")

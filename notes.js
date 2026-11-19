@@ -3502,7 +3502,7 @@ async function loadSavedNotes(append = false) {
         for (const note of (data.notes || [])) {
             const card = document.createElement("article");
             card.className = "saved-note-card";
-            card.dataset.collection = note.collection || "";
+            card.dataset.collection = note.savedCollection || "";
             if (note.available) {
                 card.innerHTML = `
                     <div class="saved-note-card-top"><span class="subject-chip">${escapeHtml(note.subject || "General")}</span><span class="saved-note-date">Saved ${escapeHtml(formatDate(note.savedAt))}</span></div>
