@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend" / "layers" / "legal" / "python"))
 from legal_guard import require_legal_acceptance
 
-ENV = {"LEGAL_PREFERENCES_TABLE": "test-prefs", "LEGAL_TERMS_VERSION": "1.1", "LEGAL_PRIVACY_VERSION": "1.0", "PREFERENCES_TABLE": "test-prefs", "LEGAL_ENFORCEMENT_ENABLED": "true"}
+ENV = {"LEGAL_PREFERENCES_TABLE": "test-prefs", "LEGAL_TERMS_VERSION": "1.1", "LEGAL_PRIVACY_VERSION": "1.1", "PREFERENCES_TABLE": "test-prefs", "LEGAL_ENFORCEMENT_ENABLED": "true"}
 
 def request(method="POST", sub="user-123", body=None):
     event = {"requestContext": {"http": {"method": method}, "authorizer": {"jwt": {"claims": {"sub": sub}}}}}
@@ -54,7 +54,7 @@ class GuardTests(unittest.TestCase):
         keys = [call.kwargs["Key"] for call in store.get_item.call_args_list]
         self.assertEqual(keys, [
             {"pk": "USER#different-user", "sk": "LEGAL#terms#1.1"},
-            {"pk": "USER#different-user", "sk": "LEGAL#privacy#1.0"},
+            {"pk": "USER#different-user", "sk": "LEGAL#privacy#1.1"},
         ])
 
 class AcceptanceEndpointTests(unittest.TestCase):
@@ -75,7 +75,7 @@ class AcceptanceEndpointTests(unittest.TestCase):
         self.env.stop()
 
     def valid_payload(self):
-        return {"termsVersion": "1.1", "privacyVersion": "1.0", "agreeToTerms": True, "acknowledgePrivacy": True, "age13OrOlder": True}
+        return {"termsVersion": "1.1", "privacyVersion": "1.1", "agreeToTerms": True, "acknowledgePrivacy": True, "age13OrOlder": True}
 
     def test_get_returns_required_when_no_acceptance(self):
         self.table.get_item.return_value = {}
@@ -88,7 +88,8 @@ class AcceptanceEndpointTests(unittest.TestCase):
         self.assertEqual(result["statusCode"], 200)
         self.assertEqual(self.table.put_item.call_count, 2)
         keys = [call.kwargs["Item"]["sk"] for call in self.table.put_item.call_args_list]
-        self.assertEqual(keys, ["LEGAL#terms#1.1", "LEGAL#privacy#1.0"])
+        self.assertEqual(keys, ["LEGAL#terms#1.1", "LEGAL#privacy#1.1"])
+        self.assertTrue(self.table.put_item.call_args_list[0].kwargs["Item"]["age13OrOlderConfirmed"])
         for call in self.table.put_item.call_args_list:
             self.assertIn("attribute_not_exists", call.kwargs["ConditionExpression"])
             self.assertEqual(call.kwargs["Item"]["pk"], "USER#user-123")
