@@ -3413,6 +3413,67 @@ async function initializeHelpfulButton(note) {
     });
 }
 
+// Collections are labels on each private bookmark, not copies of public notes.
+let activeSavedCollection = "all";
+function refreshSavedCollectionControls() {
+    const grid = document.getElementById("saved-notes-grid");
+    const toolbar = document.getElementById("saved-collections-toolbar");
+    const filter = document.getElementById("saved-collection-filter");
+    const cards = [...grid.querySelectorAll(".saved-note-card")];
+    toolbar.hidden = !cards.length;
+    const names = [...new Set(cards.map(card => card.dataset.collection || "").filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    const available = new Set(["all", "", ...names]);
+    if (!available.has(activeSavedCollection)) activeSavedCollection = "all";
+    filter.replaceChildren(new Option("All saved notes", "all"), new Option("Unsorted", ""));
+    for (const name of names) filter.add(new Option(name, name));
+    filter.value = activeSavedCollection;
+    for (const card of cards) {
+        card.hidden = activeSavedCollection !== "all" && (card.dataset.collection || "") !== activeSavedCollection;
+        const select = card.querySelector("[data-save-collection]");
+        if (select) {
+            select.replaceChildren(new Option("Unsorted", ""));
+            for (const name of names) select.add(new Option(name, name));
+            select.add(new Option("+ New collection…", "__new__"));
+            select.value = card.dataset.collection || "";
+        }
+    }
+}
+async function changeSavedCollection(noteId, card, select) {
+    const before = card.dataset.collection || "";
+    let selected = select.value;
+    if (selected === "__new__") {
+        const entered = window.prompt("Name your new collection (up to 60 characters):", "");
+        if (entered === null) { select.value = before; return; }
+        selected = entered.trim();
+    }
+    if (selected.length > 60 || [...selected].some(c => c.charCodeAt(0) < 32)) {
+        showAppNotice("Collection names must be 60 characters or fewer.", "error");
+        select.value = before;
+        return;
+    }
+    if (selected === before) { select.value = before; return; }
+    select.disabled = true;
+    try {
+        const response = await authenticatedFetch("/api/saved-notes/" + encodeURIComponent(noteId), {
+            method: "PATCH",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({collection: selected})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to organize this bookmark.");
+        if (!isAuthenticated() || !card.isConnected) return;
+        card.dataset.collection = data.collection || "";
+        refreshSavedCollectionControls();
+        showAppNotice("Saved note collection updated.", "success");
+    } catch (error) {
+        if (card.isConnected) {
+            select.value = before;
+            showAppNotice(error.message || "Unable to save collection.", "error");
+        }
+    } finally { if (card.isConnected) select.disabled = false; }
+}
+
 // Saved Notes contains references only; note content always comes from the live public API.
 async function loadSavedNotes(append = false) {
     if (!isAuthenticated()) return;
@@ -3424,6 +3485,7 @@ async function loadSavedNotes(append = false) {
     if (!append) {
         notesState.savedCursor = null;
         grid.replaceChildren();
+        document.getElementById("saved-collections-toolbar").hidden = true;
         status.hidden = false;
         status.textContent = "Loading saved notes...";
     }
@@ -3440,6 +3502,7 @@ async function loadSavedNotes(append = false) {
         for (const note of (data.notes || [])) {
             const card = document.createElement("article");
             card.className = "saved-note-card";
+            card.dataset.collection = note.collection || "";
             if (note.available) {
                 card.innerHTML = `
                     <div class="saved-note-card-top"><span class="subject-chip">${escapeHtml(note.subject || "General")}</span><span class="saved-note-date">Saved ${escapeHtml(formatDate(note.savedAt))}</span></div>
@@ -3447,6 +3510,7 @@ async function loadSavedNotes(append = false) {
                     ${note.collection ? `<p class="public-note-collection">${escapeHtml(note.collection)}</p>` : ""}
                     <p class="saved-note-description">${escapeHtml(note.description || "No description provided.")}</p>
                     <div class="saved-note-footer"><span>By ${escapeHtml(note.publicAuthor || "Community member")} · ♡ ${Number(note.helpfulCount || 0).toLocaleString()} helpful</span><button type="button" class="button button-text saved-note-remove">Remove</button></div>
+                    <label class="saved-collection-control">Collection <select data-save-collection aria-label="Organize ${escapeHtml(note.title || "saved note")}"></select></label>
                 `;
                 card.querySelector(".saved-note-open").addEventListener("click", (event) => {
                     event.preventDefault();
@@ -3462,12 +3526,14 @@ async function loadSavedNotes(append = false) {
                 `;
             }
             card.querySelector(".saved-note-remove").addEventListener("click", () => removeSavedCard(note.noteId, card));
+            card.querySelector("[data-save-collection]")?.addEventListener("change", event => changeSavedCollection(note.noteId, card, event.currentTarget));
             grid.appendChild(card);
         }
         notesState.savedCursor = data.nextCursor || null;
         more.hidden = !notesState.savedCursor;
         more.disabled = false;
         status.hidden = true;
+        refreshSavedCollectionControls();
         if (!grid.children.length) {
             grid.innerHTML = '<div class="empty-state"><h3>Nothing saved yet</h3><p>Explore public notes and choose Save Note to build your study library.</p><button type="button" class="button button-secondary" id="saved-explore">Explore notes</button></div>';
             grid.querySelector("#saved-explore").addEventListener("click", () => setActiveView("explore"));
@@ -3492,6 +3558,7 @@ async function removeSavedCard(noteId, card) {
         const response = await authenticatedFetch(`/api/saved-notes/${encodeURIComponent(noteId)}`, {method: "DELETE"});
         if (!response.ok) throw new Error("Unable to remove saved note.");
         card.remove();
+        refreshSavedCollectionControls();
         showAppNotice("Removed from Saved Notes.", "success");
         // Avoid immediately reloading an eventually consistent index after deletion.
         const grid = document.getElementById("saved-notes-grid");
@@ -4677,6 +4744,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("home-sign-in").addEventListener("click", signIn);
     document.getElementById("home-history").addEventListener("click", () => setActiveView("study-history"));
     document.getElementById("home-saved").addEventListener("click", () => setActiveView("saved-notes"));
+    document.getElementById("saved-collection-filter").addEventListener("change", event => {
+        activeSavedCollection = event.currentTarget.value;
+        refreshSavedCollectionControls();
+    });
     document.getElementById("home-study-all").addEventListener("click", () => setActiveView("study-history"));
     document.getElementById("home-saved-all").addEventListener("click", () => setActiveView("saved-notes"));
     document.getElementById("home-trending-all").addEventListener("click", () => {
