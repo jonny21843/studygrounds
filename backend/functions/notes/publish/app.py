@@ -4,6 +4,7 @@ import os
 from datetime import datetime, timezone
 
 import boto3
+from botocore.exceptions import ClientError
 
 
 dynamodb = boto3.resource("dynamodb")
@@ -140,6 +141,17 @@ def reserve_publish_action(user_id, limit):
         raise
 
 
+
+def update_publication(**kwargs):
+    """Report concurrent publish/unpublish conflicts without surfacing a 500."""
+    try:
+        return table.update_item(**kwargs)
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") == "ConditionalCheckFailedException":
+            return None
+        raise
+
+
 def lambda_handler(event, context):
     user_id = current_user_id(event)
     username = current_username(event)
@@ -225,7 +237,7 @@ def lambda_handler(event, context):
             })
 
         if pending_files:
-            result = table.update_item(
+            result = update_publication(
                 Key={"userId": user_id, "noteId": note_id},
                 UpdateExpression=(
                     "SET visibility = :private, publishPending = :pending, "
@@ -247,6 +259,11 @@ def lambda_handler(event, context):
                 ),
                 ReturnValues="ALL_NEW",
             )
+            if result is None:
+                return response(409, {
+                    "error": "This note changed while publishing. Reload it and try again.",
+                    "code": "PUBLISH_CONFLICT",
+                })
             return response(
                 202,
                 {
@@ -256,7 +273,7 @@ def lambda_handler(event, context):
                 },
             )
 
-        result = table.update_item(
+        result = update_publication(
             Key={"userId": user_id, "noteId": note_id},
             UpdateExpression=(
                 "SET visibility = :public, publishedAt = :published_at, "
@@ -277,6 +294,11 @@ def lambda_handler(event, context):
             ),
             ReturnValues="ALL_NEW",
         )
+        if result is None:
+            return response(409, {
+                "error": "This note changed while publishing. Reload it and try again.",
+                "code": "PUBLISH_CONFLICT",
+            })
     else:
         result = table.update_item(
             Key={"userId": user_id, "noteId": note_id},
