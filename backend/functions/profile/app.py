@@ -1,5 +1,6 @@
 import json
 import os
+import hashlib
 import re
 
 import boto3
@@ -10,6 +11,12 @@ user_pool_id = os.environ["COGNITO_USER_POOL_ID"]
 profiles = boto3.resource("dynamodb").Table(os.environ["PREFERENCES_TABLE"])
 AVATARS = {"indigo", "emerald", "rose", "amber", "slate", "ocean"}
 PROFILE_KEY = "PUBLIC_PROFILE"
+
+def contributor_id(user_id):
+    # Same opaque identifier as the public contributor endpoint.
+    return hashlib.sha256(
+        ("studygrounds:contributor:v1:" + user_id).encode("utf-8")
+    ).hexdigest()
 
 
 def profile_fields(user_id):
@@ -90,6 +97,7 @@ def get_profile(username, user_id):
         "lastName": last_name,
         "complete": bool(first_name.strip() and last_name.strip()),
         "publicAuthor": public_author(first_name, last_name),
+        "contributorId": contributor_id(user_id),
         **profile_fields(user_id),
     }
 
@@ -158,6 +166,7 @@ def lambda_handler(event, context):
                 "lastName": last_name,
                 "complete": True,
                 "publicAuthor": public_author(first_name, last_name),
+                "contributorId": contributor_id(user_id),
                 **public_fields,
             }
         },
