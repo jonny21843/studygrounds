@@ -1,0 +1,99 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  One-time bootstrap for automated DEV monitoring. Adds only a dedicated
+  CloudFormation execution role and narrow policy to the EXISTING GitHub
+  StudyGroundsDevDeploy role. No changes to production or app stack.
+
+Parameters:
+  ExistingDevGithubRoleName:
+    Type: String
+    Default: StudyGroundsDevDeploy
+    AllowedValues: [StudyGroundsDevDeploy]
+
+Resources:
+  DevMonitoringExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: StudyGroundsDevMonitoringExecutionRole
+      Description: Execution role used only for studygrounds-dev-observability.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StudyGroundsDevMonitoringExecutionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: MonitoringCloudWatchAlarms
+                Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricAlarm
+                  - cloudwatch:DeleteAlarms
+                  - cloudwatch:DescribeAlarms
+                  - cloudwatch:TagResource
+                  - cloudwatch:UntagResource
+                Resource: !Sub "arn:${AWS::Partition}:cloudwatch:us-east-2:${AWS::AccountId}:alarm:studygrounds-dev-*"
+              - Sid: MonitoringSnsTopic
+                Effect: Allow
+                Action:
+                  - sns:CreateTopic
+                  - sns:DeleteTopic
+                  - sns:GetTopicAttributes
+                  - sns:SetTopicAttributes
+                  - sns:TagResource
+                  - sns:UntagResource
+                  - sns:Subscribe
+                  - sns:Unsubscribe
+                  - sns:ListSubscriptionsByTopic
+                Resource: !Sub "arn:${AWS::Partition}:sns:us-east-2:${AWS::AccountId}:studygrounds-dev-operational-alerts"
+              - Sid: MonitoringEventBridgeRules
+                Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:DescribeRule
+                  - events:DeleteRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                  - events:ListTargetsByRule
+                  - events:TagResource
+                  - events:UntagResource
+                Resource: !Sub "arn:${AWS::Partition}:events:us-east-2:${AWS::AccountId}:rule/studygrounds-dev-*"
+
+  ExistingDevGithubMonitoringPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: StudyGroundsDevMonitoringDeployPolicy
+      Roles: [!Ref ExistingDevGithubRoleName]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: OnlyMonitoringStackChanges
+            Effect: Allow
+            Action:
+              - cloudformation:CreateChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:DescribeChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DescribeStackEvents
+              - cloudformation:GetTemplate
+              - cloudformation:GetTemplateSummary
+            Resource:
+              - !Sub "arn:${AWS::Partition}:cloudformation:us-east-2:${AWS::AccountId}:stack/studygrounds-dev-observability/*"
+              - !Sub "arn:${AWS::Partition}:cloudformation:us-east-2:${AWS::AccountId}:changeSet/*/*"
+          - Sid: PassOnlyDevMonitoringRole
+            Effect: Allow
+            Action: iam:PassRole
+            Resource: !GetAtt DevMonitoringExecutionRole.Arn
+            Condition:
+              StringEquals:
+                "iam:PassedToService": cloudformation.amazonaws.com
+
+Outputs:
+  MonitoringCloudFormationRoleArn:
+    Value: !GetAtt DevMonitoringExecutionRole.Arn
+  MonitoringStackName:
+    Value: studygrounds-dev-observability
