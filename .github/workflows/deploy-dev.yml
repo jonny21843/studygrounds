@@ -151,7 +151,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/auth
-          cp index.html study-notes.html terms.html privacy.html community-guidelines.html robots.txt sitemap.xml styles.css auth.js legal.js notes.js tabs.js dist/
+          cp index.html study-notes.html terms.html privacy.html community-guidelines.html copyright.html robots.txt sitemap.xml styles.css auth.js legal.js notes.js tabs.js dist/
           cp auth/*.html auth/*.js dist/auth/
           python scripts/prepare_dev_seo.py dist
 
@@ -196,7 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           bucket="studygrounds-frontend-frontendbucket-5jnigqnmskgt"
-          for page in terms.html privacy.html community-guidelines.html; do
+          for page in terms.html privacy.html community-guidelines.html copyright.html; do
             aws s3 cp "dist/$page" "s3://$bucket/$page" \
               --content-type "text/html; charset=utf-8" \
               --cache-control "no-cache,no-store,must-revalidate"
@@ -207,7 +207,7 @@ jobs:
         run: |
           set -euo pipefail
           bucket="studygrounds-frontend-frontendbucket-5jnigqnmskgt"
-          for asset in index.html terms.html privacy.html community-guidelines.html styles.css legal.js notes.js auth/callback.html; do
+          for asset in index.html terms.html privacy.html community-guidelines.html copyright.html styles.css legal.js notes.js auth/callback.html; do
             local_size=$(wc -c < "dist/$asset")
             remote_size=$(aws s3 ls "s3://$bucket/$asset" | awk '{print $3}')
             test "$local_size" -gt 0
