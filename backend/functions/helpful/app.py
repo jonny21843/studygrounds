@@ -1,3 +1,4 @@
+from legal_guard import require_legal_acceptance
 import json
 import os
 import re
@@ -140,6 +141,9 @@ def transact(note, voter, add):
 
 
 def lambda_handler(event, context):
+    legal_block = require_legal_acceptance(event)
+    if legal_block is not None:
+        return legal_block
     voter = user_id(event)
     if not voter:
         return response(401, {"error": "Sign in to mark notes helpful."})
