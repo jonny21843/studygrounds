@@ -41,3 +41,13 @@
 8. Have the operator/legal counsel review final Terms and Privacy copy before shipping `main`.
 
 This is a code-level inventory, **not an assertion that the live AWS retention settings were checked**.
+
+### DEV user test checklist
+
+1. Register a disposable account through the public age gate and review Terms/Privacy.
+2. Copy its account ID from Settings → Privacy & Data before deletion.
+3. Upload a file and create a note, save a different note, optionally submit feedback.
+4. Request deletion, record the SQS delayed message; do not purge it.
+5. After processing, verify the Cognito user is missing, and all relevant user partitions query empty using the saved ID.
+6. Check the DEV upload bucket has no objects under `users/{sub}/` and the dead-letter queue remains empty.
+7. Verify previously registered users are not shown the 13+ checkbox when only a policy version needs updating.

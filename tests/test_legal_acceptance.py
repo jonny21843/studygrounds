@@ -147,6 +147,7 @@ class AcceptanceEndpointTests(unittest.TestCase):
         result = self.handler.lambda_handler(request(body=body), None)
         self.assertEqual(result["statusCode"], 200)
         self.assertNotIn("age13OrOlderConfirmed", self.items[("USER#user-123", "LEGAL#privacy#1.2")])
+        self.assertEqual([c.kwargs["Item"]["sk"] for c in self.table.put_item.call_args_list], ["LEGAL#privacy#1.2"])
         self.assertFalse(self.status()["required"])
 
     def test_legacy_age_migrates_from_previous_terms_versions(self):

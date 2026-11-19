@@ -21,8 +21,8 @@ Run `python scripts/build_legal_manifest.py` before SAM builds. The build script
 fingerprints each public legal HTML page with SHA-256 and copies the release
 manifest into the packaged legal Lambda. Browser acceptance reads and hashes the
 served Terms and Privacy pages and the API rejects mismatches (including
-backend-first deployment windows). Records contain the document version, SHA-256
-fingerprint, server timestamp and age confirmation. Never edit published
+backend-first deployment windows). Legal acceptance records contain the document version, SHA-256
+fingerprint, and server timestamp. One-time age confirmation is stored separately. Never edit published
 substantive legal copy without a new version and preservation in
 `docs/legal-history/`. Operator/legal approval of the final legal copy is
 still required before PROD.
@@ -33,7 +33,7 @@ Settings includes a confirmed deletion request. A dedicated authenticated API
 queues a delayed SQS worker that removes user-owned DynamoDB items, user S3
 uploads, Cognito credentials, and user feedback; it pseudonymizes corresponding
 moderation records. SQS redrive maintains failed requests for investigation.
-The worker remains unverified in real AWS until DEV integration testing.
+The operator verified in DEV that a queued deletion ultimately removed the Cognito account and blocked subsequent sign-ins. DynamoDB and S3 cleanup need a second disposable-account test with the account ID recorded in advance.
 Review actual DynamoDB point-in-time backups, CloudWatch retention, and any
 offsite copies before promising a deletion SLA.
 

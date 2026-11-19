@@ -3488,3 +3488,6 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 #account-delete-form { padding-top:1rem; display:grid; gap:.75rem; }
 #account-delete-form[hidden] { display:none; }
 #account-delete-form input { max-width:26rem; }
+
+/* Honor conditional age and individual-policy acknowledgement rows. */
+#legal-gate [hidden] { display: none !important; }
