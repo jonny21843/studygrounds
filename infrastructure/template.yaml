@@ -54,7 +54,7 @@ Globals:
       Variables:
         LEGAL_PREFERENCES_TABLE: !Ref PreferencesTable
         LEGAL_TERMS_VERSION: "1.1"
-        LEGAL_PRIVACY_VERSION: "1.0"
+        LEGAL_PRIVACY_VERSION: "1.1"
 
 Resources:
   LegalFunction:
