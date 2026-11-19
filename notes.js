@@ -2622,7 +2622,12 @@ function renderActivePublicFilters(query, subject, collection, sort) {
     container.querySelectorAll("[data-clear-filter]").forEach((button) => {
         button.addEventListener("click", () => {
             const field = button.dataset.clearFilter;
-            if (field === "query") document.getElementById("public-search").value = "";
+            if (field === "query") {
+                document.getElementById("public-search").value = "";
+                if (document.getElementById("public-sort").value === "relevance") {
+                    document.getElementById("public-sort").value = "newest";
+                }
+            }
             if (field === "subject") {
                 document.getElementById("public-subject").value = "";
                 refreshExploreTopicFilter();
