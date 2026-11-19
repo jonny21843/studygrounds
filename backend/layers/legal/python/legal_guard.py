@@ -7,6 +7,9 @@ def require_legal_acceptance(event):
     method = ((event.get("requestContext") or {}).get("http") or {}).get("method", "GET").upper()
     if method not in ("POST", "PUT", "PATCH", "DELETE"):
         return None
+    # Only explicit test configuration may bypass the check; production defaults to enforcement.
+    if os.environ.get("LEGAL_ENFORCEMENT_ENABLED", "true").lower() == "false":
+        return None
     claims = (((event.get("requestContext") or {}).get("authorizer") or {}).get("jwt") or {}).get("claims") or {}
     user_id = claims.get("sub")
     if not user_id:
