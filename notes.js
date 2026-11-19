@@ -417,7 +417,24 @@ function showProfilePanel(profile) {
             ? `Public notes currently show: ${profile.publicAuthor}`
             : "Complete your profile before publishing.";
     }
+    updateSettingsAvatarPreview();
 }
+
+const PROFILE_AVATAR_STYLES = ["indigo", "emerald", "rose", "amber", "slate", "ocean"];
+
+function updateSettingsAvatarPreview() {
+    const preview = document.getElementById("settings-avatar-example");
+    const label = document.getElementById("settings-avatar-name");
+    if (!preview || !label) return;
+    const first = document.getElementById("settings-first-name").value.trim();
+    const last = document.getElementById("settings-last-name").value.trim();
+    const avatarStyle = document.querySelector('input[name="profile-avatar-style"]:checked')?.value || "indigo";
+    const safeStyle = PROFILE_AVATAR_STYLES.includes(avatarStyle) ? avatarStyle : "indigo";
+    preview.className = "contributor-avatar avatar-" + safeStyle;
+    preview.textContent = (first || "?").slice(0, 1).toUpperCase();
+    label.textContent = first ? first + (last ? " " + last.slice(0, 1).toUpperCase() + "." : "") : "Your public avatar";
+}
+
 
 async function saveProfile(event) {
     event.preventDefault();
@@ -468,6 +485,8 @@ async function saveSettingsProfile(event) {
     const avatarStyle = document.querySelector('input[name="profile-avatar-style"]:checked')?.value || "indigo";
     const status = document.getElementById("settings-profile-status");
     const button = document.getElementById("settings-profile-submit");
+    status.textContent = "";
+    status.className = "status-text";
 
     if (!firstName || !lastName) {
         status.textContent = "First name and last name are required.";
@@ -507,6 +526,11 @@ function setActiveView(view, options = {}) {
         view = "home";
     }
     if (ADMIN_VIEWS.includes(view)) notesState.lastAdminView = view;
+    if (notesState.activeView === "settings" && view !== "settings") {
+        const profileStatus = document.getElementById("settings-profile-status");
+        profileStatus.textContent = "";
+        profileStatus.className = "status-text";
+    }
     if (view !== "explore") exitPublicReaderFocus();
     notesState.activeView = view;
     ++notesState.navigationVersion;
@@ -4394,6 +4418,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         setActiveView("explore");
     });
     document.getElementById("settings-tab").addEventListener("click", () => setActiveView("settings"));
+    ["settings-first-name", "settings-last-name"].forEach(id => {
+        document.getElementById(id).addEventListener("input", updateSettingsAvatarPreview);
+    });
+    document.querySelectorAll('input[name="profile-avatar-style"]').forEach(input => {
+        input.addEventListener("change", updateSettingsAvatarPreview);
+    });
     document.getElementById("analytics-tab").addEventListener("click", () => setActiveView("analytics"));
     document.getElementById("security-tab").addEventListener("click", () => setActiveView("security"));
     document.getElementById("moderation-tab").addEventListener("click", () => setActiveView("moderation"));

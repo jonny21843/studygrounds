@@ -3297,3 +3297,15 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
 .avatar-slate { background:#344054; color:white; }
 .avatar-ocean { background:#026aa2; color:white; }
 .contributor-bio { white-space:pre-wrap; overflow-wrap:anywhere; max-width:65ch; }
+
+/* Exact avatar appearance in public profiles and in the Settings preview. */
+.contributor-avatar.avatar-indigo { background:#4655d6; color:#fff; }
+.contributor-avatar.avatar-emerald { background:#067647; color:#fff; }
+.contributor-avatar.avatar-rose { background:#c11574; color:#fff; }
+.contributor-avatar.avatar-amber { background:#b54708; color:#fff; }
+.contributor-avatar.avatar-slate { background:#344054; color:#fff; }
+.contributor-avatar.avatar-ocean { background:#026aa2; color:#fff; }
+.settings-avatar-preview { display:flex; gap:14px; align-items:center; padding:12px 0; border-bottom:1px solid #eaecf0; }
+.settings-avatar-preview .contributor-avatar { flex:0 0 64px; width:64px; height:64px; border-radius:16px; font-size:1.6rem; }
+.settings-avatar-preview strong { color:#101828; }
+.settings-avatar-preview .note-description { margin:5px 0 0; }

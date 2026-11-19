@@ -55,6 +55,21 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext(section('const ADMIN_VIEWS = ', 'function isConfiguredAdmin()'), ctx);
 vm.runInContext(section('function homeRequestCurrent(', 'function homeMessage('), ctx);
+vm.runInContext(section('const PROFILE_AVATAR_STYLES = ', 'async function saveProfile('), {
+    ...ctx,
+    document: {
+        getElementById(id) {
+            if (id === "settings-avatar-example") {
+                return {className: "", textContent: ""};
+            }
+            if (id === "settings-avatar-name") return {textContent: ""};
+            if (id === "settings-first-name") return {value: "Jons"};
+            if (id === "settings-last-name") return {value: "Test"};
+            return element(id);
+        },
+        querySelector() { return {value: "emerald"}; }
+    }
+});
 
 ctx.setActiveView("analytics");
 const analyticsRequest = state.navigationVersion;
@@ -73,7 +88,10 @@ assert.equal(calls.explore, 0, "direct reader entry must not start an Explore gr
 assert.equal(ctx.homeRequestCurrent(homeRequest, token), false, "old Home results must not show after navigation");
 ctx.setActiveView("explore");
 assert.equal(calls.explore, 1);
+ctx.setActiveView("settings");
+element("settings-profile-status").textContent = "Saved. Public notes will show Jons T.";
 ctx.setActiveView("home");
+assert.equal(element("settings-profile-status").textContent, "", "Save message must clear when leaving Settings");
 const newerRequest = ++state.homeLoadVersion;
 token = "different-user";
 assert.equal(ctx.homeRequestCurrent(newerRequest, "member-token"), false, "account switch invalidates pending Home response");
