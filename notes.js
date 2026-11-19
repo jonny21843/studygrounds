@@ -310,7 +310,7 @@ const notesState = {
     uploadNoteId: null,
     editingNoteId: null,
     activeView: "home",
-    lastAdminView: "analytics",
+    lastAdminView: "admin-overview",
     navigationVersion: 0,
     homeLoadVersion: 0,
     uploadInProgress: false,
@@ -655,7 +655,87 @@ function toggleNotifications(open) {
     if (open) loadNotifications();
 }
 
-const ADMIN_VIEWS = ["analytics", "security", "moderation", "feedback-admin"];
+// Admin overview reuses existing authorized APIs. Each panel fails independently.
+let adminOverviewVersion = 0;
+async function loadAdminOverview() {
+    if (!isAuthenticated() || !notesState.isAdmin || !isConfiguredAdmin()) return;
+    const version = ++adminOverviewVersion;
+    const navigationVersion = notesState.navigationVersion;
+    const token = getAccessToken();
+    const status = document.getElementById("admin-overview-status");
+    status.textContent = "Loading admin overview...";
+    for (const id of ["overview-public-notes", "overview-users", "overview-open-reports",
+        "overview-security-review", "overview-new-feedback"]) {
+        document.getElementById(id).textContent = "—";
+    }
+    const recent = document.getElementById("overview-recent-notes");
+    recent.replaceChildren();
+    const current = () => version === adminOverviewVersion
+        && navigationVersion === notesState.navigationVersion
+        && token === getAccessToken()
+        && notesState.activeView === "admin-overview"
+        && notesState.isAdmin;
+    const configs = [
+        {
+            path: "/api/admin/analytics",
+            apply(data) {
+                const metrics = data.metrics || {};
+                document.getElementById("overview-public-notes").textContent =
+                    Number(metrics.publicNotes || 0).toLocaleString();
+                document.getElementById("overview-users").textContent =
+                    metrics.users == null ? "Member count unavailable"
+                        : Number(metrics.users).toLocaleString() + " members";
+                for (const note of (data.recentPublished || []).slice(0, 5)) {
+                    const row = document.createElement("div");
+                    row.className = "admin-overview-note";
+                    const title = document.createElement("span");
+                    title.textContent = note.title || "Untitled note";
+                    const info = document.createElement("small");
+                    info.textContent = [note.subject, note.publishedAt ? formatDate(note.publishedAt) : ""]
+                        .filter(Boolean).join(" · ");
+                    row.append(title, info);
+                    recent.append(row);
+                }
+                if (!recent.children.length) recent.textContent = "No recently published notes.";
+            }
+        },
+        {
+            path: "/api/admin/moderation",
+            apply(data) {
+                document.getElementById("overview-open-reports").textContent =
+                    Number(data.metrics?.open || 0).toLocaleString();
+            }
+        },
+        {
+            path: "/api/admin/security",
+            apply(data) {
+                document.getElementById("overview-security-review").textContent =
+                    Number(data.metrics?.reviewRequired || 0).toLocaleString();
+            }
+        },
+        {
+            path: "/api/admin/feedback?status=NEW",
+            apply(data) {
+                const count = (data.feedback || []).filter(x => x.status === "NEW").length;
+                document.getElementById("overview-new-feedback").textContent =
+                    count.toLocaleString() + (data.nextCursor ? "+" : "");
+            }
+        }
+    ];
+    const results = await Promise.allSettled(configs.map(async config => {
+        const response = await adminFetch(config.path);
+        const data = await response.json();
+        if (!current()) return;
+        if (!response.ok) throw new Error(data.error || "Could not load overview data");
+        config.apply(data);
+    }));
+    if (!current()) return;
+    const failed = results.filter(result => result.status === "rejected").length;
+    status.textContent = failed ? failed + " overview sections could not load. Use their detailed tabs to retry."
+        : "Overview updated.";
+}
+
+const ADMIN_VIEWS = ["admin-overview", "analytics", "security", "moderation", "feedback-admin"];
 function isCurrentAdminView(view, version) {
     return notesState.activeView === view && notesState.navigationVersion === version;
 }
@@ -681,6 +761,7 @@ function setActiveView(view, options = {}) {
     document.getElementById("saved-notes-view").hidden = view !== "saved-notes";
     document.getElementById("study-history-view").hidden = view !== "study-history";
     document.getElementById("settings-view").hidden = view !== "settings";
+    document.getElementById("admin-overview-view").hidden = view !== "admin-overview";
     document.getElementById("analytics-view").hidden = view !== "analytics";
     document.getElementById("security-view").hidden = view !== "security";
     document.getElementById("moderation-view").hidden = view !== "moderation";
@@ -720,6 +801,8 @@ function setActiveView(view, options = {}) {
         loadSavedNotes();
     } else if (view === "study-history") {
         loadStudyDashboard();
+    } else if (view === "admin-overview") {
+        loadAdminOverview();
     } else if (view === "analytics") {
         loadAdminAnalytics();
     } else if (view === "security") {
@@ -4556,7 +4639,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("settings-feedback").addEventListener("click", () => setActiveView("feedback"));
     document.getElementById("feedback-tab").addEventListener("click", () => setActiveView("feedback"));
     document.getElementById("feedback-admin-tab").addEventListener("click", () => setActiveView("feedback-admin"));
-    document.getElementById("admin-tab").addEventListener("click", () => setActiveView(notesState.lastAdminView));
+    document.getElementById("admin-tab").addEventListener("click", () => setActiveView("admin-overview"));
+    document.getElementById("admin-overview-tab").addEventListener("click", () => setActiveView("admin-overview"));
+    document.getElementById("refresh-admin-overview").addEventListener("click", loadAdminOverview);
+    document.querySelectorAll("[data-admin-destination]").forEach(button => {
+        button.addEventListener("click", () => setActiveView(button.dataset.adminDestination));
+    });
     document.getElementById("feedback-form").addEventListener("submit", sendAppFeedback);
     document.getElementById("feedback-admin-refresh").addEventListener("click", () => loadAdminFeedback());
     document.getElementById("feedback-admin-filter").addEventListener("change", () => loadAdminFeedback());
