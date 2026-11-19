@@ -1,8 +1,8 @@
 # StudyGrounds legal document release procedure
 
-Current effective date: 2026-11-19. Initial legal versions: terms 1.0 and privacy 1.0. Drafts require owner/legal review before production.
+Current effective date: 2026-11-19. Original prototype legal versions: terms 1.0 and privacy 1.0. Revised DEV draft legal versions: terms 1.1 and privacy 1.1. Drafts require owner/legal review before production.
 
-- Public legal documents: `terms.html`, `privacy.html`, `community-guidelines.html`.
+- Public legal documents: `terms.html`, `privacy.html`, `community-guidelines.html`, `copyright.html`.
 - Server manifest: `backend/functions/legal/app.py` DOCUMENTS; shared guard checks the versions passed in SAM environment variables.
 - SAM configuration: `infrastructure/template.yaml` Globals Function Environment and LegalFunction environment.
 - Increment required document version in **both** the manifest configuration and SAM Globals on a substantive revision, and preserve old text in `docs/legal-history/`.
