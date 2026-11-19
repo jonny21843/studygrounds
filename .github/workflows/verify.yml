@@ -54,6 +54,9 @@ jobs:
       - name: Validate scoped DEV and PROD monitoring IAM templates
         run: cfn-lint infrastructure/dev-monitoring-iam-bootstrap.yaml infrastructure/prod-monitoring-iam-bootstrap.yaml
 
+      - name: Stage shared Lambda legal guard
+        run: python scripts/stage_legal_guard.py
+
       - name: Python compilation
         run: python -m compileall -q backend tests
 
