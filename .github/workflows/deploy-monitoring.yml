@@ -101,8 +101,11 @@ jobs:
           stack_status="$(aws cloudformation describe-stacks --stack-name "$app_stack" --region us-east-2 --query 'Stacks[0].StackStatus' --output text)"
           [[ "$stack_status" == "CREATE_COMPLETE" || "$stack_status" == "UPDATE_COMPLETE" ]]
           resolve() {
-            aws cloudformation list-stack-resources --stack-name "$app_stack" --region us-east-2 \
-              --query "StackResourceSummaries[?LogicalResourceId=='$1'].PhysicalResourceId | [0]" --output text
+            # Describe one logical resource directly. The paginated list-stack-resources
+            # command can produce an extra 'None' line when --output text is used.
+            aws cloudformation describe-stack-resource --stack-name "$app_stack" \
+              --logical-resource-id "$1" --region us-east-2 \
+              --query "StackResourceDetail.PhysicalResourceId" --output text
           }
           api_id="$(resolve NotesApi)"
           malware_fn="$(resolve MalwareScanResultFunction)"
