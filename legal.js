@@ -44,11 +44,26 @@ function showLegalGate(message = "") {
             const button = gate.querySelector('[type="submit"]');
             button.disabled = true;
             try {
+                // Confirm the actual served documents match the server release.
+                const hashes = {};
+                for (const name of ["terms", "privacy"]) {
+                    const documentInfo = legalStatus.documents[name];
+                    const documentResponse = await fetch(documentInfo.url, {cache: "no-store"});
+                    if (!documentResponse.ok) throw new Error("Unable to load current " + name + " document.");
+                    const digest = await crypto.subtle.digest("SHA-256", await documentResponse.arrayBuffer());
+                    hashes[name] = Array.from(new Uint8Array(digest))
+                        .map(byte => byte.toString(16).padStart(2, "0")).join("");
+                    if (hashes[name] !== documentInfo.contentHash) {
+                        throw new Error("The legal documents were updated. Refresh and review the latest versions.");
+                    }
+                }
                 const response = await fetch(getApiBaseUrl() + "/api/legal/accept", {
                     method: "POST",
                     headers: {"Authorization": "Bearer " + getAccessToken(), "Content-Type": "application/json"},
                     body: JSON.stringify({
                         termsVersion: legalStatus.documents.terms.version,
+                        termsHash: hashes.terms,
+                        privacyHash: hashes.privacy,
                         privacyVersion: legalStatus.documents.privacy.version,
                         agreeToTerms: gate.querySelector("#legal-agree").checked,
                         acknowledgePrivacy: gate.querySelector("#legal-privacy").checked,

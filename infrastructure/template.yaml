@@ -53,8 +53,8 @@ Globals:
     Environment:
       Variables:
         LEGAL_PREFERENCES_TABLE: !Ref PreferencesTable
-        LEGAL_TERMS_VERSION: "1.1"
-        LEGAL_PRIVACY_VERSION: "1.1"
+        LEGAL_TERMS_VERSION: "1.2"
+        LEGAL_PRIVACY_VERSION: "1.2"
 
 Resources:
   AccountDeletionDeadLetterQueue:

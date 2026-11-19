@@ -2,15 +2,14 @@
 import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 import boto3
 from botocore.exceptions import ClientError
 
 table = boto3.resource("dynamodb").Table(os.environ["PREFERENCES_TABLE"])
-DOCUMENTS = {
-    "terms": {"version": os.environ["LEGAL_TERMS_VERSION"], "effectiveDate": "2026-11-19", "url": "/terms.html", "required": True},
-    "privacy": {"version": os.environ["LEGAL_PRIVACY_VERSION"], "effectiveDate": "2026-11-19", "url": "/privacy.html", "required": True},
-    "guidelines": {"version": "1.0", "effectiveDate": "2026-11-19", "url": "/community-guidelines.html", "required": False},
-}
+DOCUMENTS = json.loads(Path(__file__).with_name("manifest.json").read_text(encoding="utf-8"))
+if DOCUMENTS["terms"]["version"] != os.environ["LEGAL_TERMS_VERSION"] or DOCUMENTS["privacy"]["version"] != os.environ["LEGAL_PRIVACY_VERSION"]:
+    raise RuntimeError("Published legal manifest is out of sync with configured versions")
 
 def respond(status, body):
     return {"statusCode": status, "headers": {"Content-Type": "application/json", "Cache-Control": "no-store"}, "body": json.dumps(body)}
@@ -28,7 +27,7 @@ def lambda_handler(event, context):
             accepted_at = None
             if doc["required"]:
                 item = table.get_item(Key={"pk": "USER#" + sub, "sk": "LEGAL#" + name + "#" + doc["version"]}, ConsistentRead=True).get("Item") or {}
-                accepted = bool(item.get("acceptedAt"))
+                accepted = bool(item.get("acceptedAt")) and item.get("contentHash") == doc["contentHash"]
                 accepted_at = item.get("acceptedAt")
             documents[name] = dict(doc, accepted=accepted, acceptedAt=accepted_at)
         return respond(200, {"documents": documents, "required": not all(documents[k]["accepted"] for k in ("terms", "privacy"))})
@@ -38,10 +37,12 @@ def lambda_handler(event, context):
         payload = json.loads(event.get("body") or "{}")
     except (TypeError, ValueError):
         return respond(400, {"error": "Invalid JSON"})
-    if not isinstance(payload, dict) or set(payload) != {"termsVersion", "privacyVersion", "agreeToTerms", "acknowledgePrivacy", "age13OrOlder"}:
+    if not isinstance(payload, dict) or set(payload) != {"termsVersion", "privacyVersion", "termsHash", "privacyHash", "agreeToTerms", "acknowledgePrivacy", "age13OrOlder"}:
         return respond(400, {"error": "Both document versions and confirmations are required"})
     if payload["termsVersion"] != DOCUMENTS["terms"]["version"] or payload["privacyVersion"] != DOCUMENTS["privacy"]["version"]:
         return respond(409, {"error": "Documents have changed. Please review current versions."})
+    if payload["termsHash"] != DOCUMENTS["terms"]["contentHash"] or payload["privacyHash"] != DOCUMENTS["privacy"]["contentHash"]:
+        return respond(409, {"error": "Published policies differ from the documents you reviewed. Refresh and try again."})
     if payload["agreeToTerms"] is not True or payload["acknowledgePrivacy"] is not True:
         return respond(400, {"error": "Affirmative agreement and acknowledgement required"})
     if payload["age13OrOlder"] is not True:
@@ -55,6 +56,7 @@ def lambda_handler(event, context):
                 "sk": "LEGAL#" + name + "#" + doc["version"],
                 "document": name,
                 "version": doc["version"],
+                "contentHash": doc["contentHash"],
                 "effectiveDate": doc["effectiveDate"],
                 "acceptedAt": now,
                 "action": "agreed" if name == "terms" else "acknowledged",

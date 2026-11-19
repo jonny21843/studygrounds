@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import unittest
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -11,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend" / "layers" / "legal" / "python"))
 from legal_guard import require_legal_acceptance
 
-ENV = {"LEGAL_PREFERENCES_TABLE": "test-prefs", "LEGAL_TERMS_VERSION": "1.1", "LEGAL_PRIVACY_VERSION": "1.1", "PREFERENCES_TABLE": "test-prefs", "LEGAL_ENFORCEMENT_ENABLED": "true"}
+ENV = {"LEGAL_PREFERENCES_TABLE": "test-prefs", "LEGAL_TERMS_VERSION": "1.2", "LEGAL_PRIVACY_VERSION": "1.2", "PREFERENCES_TABLE": "test-prefs", "LEGAL_ENFORCEMENT_ENABLED": "true"}
 
 def request(method="POST", sub="user-123", body=None):
     event = {"requestContext": {"http": {"method": method}, "authorizer": {"jwt": {"claims": {"sub": sub}}}}}
@@ -53,8 +54,8 @@ class GuardTests(unittest.TestCase):
             self.assertIsNone(require_legal_acceptance(request(sub="different-user")))
         keys = [call.kwargs["Key"] for call in store.get_item.call_args_list]
         self.assertEqual(keys, [
-            {"pk": "USER#different-user", "sk": "LEGAL#terms#1.1"},
-            {"pk": "USER#different-user", "sk": "LEGAL#privacy#1.1"},
+            {"pk": "USER#different-user", "sk": "LEGAL#terms#1.2"},
+            {"pk": "USER#different-user", "sk": "LEGAL#privacy#1.2"},
         ])
 
 class AcceptanceEndpointTests(unittest.TestCase):
@@ -66,6 +67,7 @@ class AcceptanceEndpointTests(unittest.TestCase):
         self.mock_resource = patch("boto3.resource", return_value=self.resource)
         self.env.start()
         self.mock_resource.start()
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "build_legal_manifest.py")], check=True)
         spec = importlib.util.spec_from_file_location("studygrounds_legal_handler", ROOT / "backend" / "functions" / "legal" / "app.py")
         self.handler = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.handler)
@@ -75,7 +77,7 @@ class AcceptanceEndpointTests(unittest.TestCase):
         self.env.stop()
 
     def valid_payload(self):
-        return {"termsVersion": "1.1", "privacyVersion": "1.1", "agreeToTerms": True, "acknowledgePrivacy": True, "age13OrOlder": True}
+        return {"termsVersion": "1.2", "privacyVersion": "1.2", "termsHash": self.handler.DOCUMENTS["terms"]["contentHash"], "privacyHash": self.handler.DOCUMENTS["privacy"]["contentHash"], "agreeToTerms": True, "acknowledgePrivacy": True, "age13OrOlder": True}
 
     def test_get_returns_required_when_no_acceptance(self):
         self.table.get_item.return_value = {}
@@ -88,9 +90,10 @@ class AcceptanceEndpointTests(unittest.TestCase):
         self.assertEqual(result["statusCode"], 200)
         self.assertEqual(self.table.put_item.call_count, 2)
         keys = [call.kwargs["Item"]["sk"] for call in self.table.put_item.call_args_list]
-        self.assertEqual(keys, ["LEGAL#terms#1.1", "LEGAL#privacy#1.1"])
+        self.assertEqual(keys, ["LEGAL#terms#1.2", "LEGAL#privacy#1.2"])
         self.assertTrue(self.table.put_item.call_args_list[0].kwargs["Item"]["age13OrOlderConfirmed"])
         for call in self.table.put_item.call_args_list:
+            self.assertEqual(call.kwargs["Item"]["contentHash"], self.handler.DOCUMENTS[call.kwargs["Item"]["document"]]["contentHash"])
             self.assertIn("attribute_not_exists", call.kwargs["ConditionExpression"])
             self.assertEqual(call.kwargs["Item"]["pk"], "USER#user-123")
 
@@ -106,6 +109,13 @@ class AcceptanceEndpointTests(unittest.TestCase):
         payload["acknowledgePrivacy"] = False
         result = self.handler.lambda_handler(request(body=payload), None)
         self.assertEqual(result["statusCode"], 400)
+        self.table.put_item.assert_not_called()
+
+    def test_mismatched_document_hash_rejected(self):
+        payload = self.valid_payload()
+        payload["termsHash"] = "bogus"
+        result = self.handler.lambda_handler(request(body=payload), None)
+        self.assertEqual(result["statusCode"], 409)
         self.table.put_item.assert_not_called()
 
     def test_under_13_is_rejected(self):
