@@ -16,6 +16,7 @@ security_table = dynamodb.Table(os.environ["SECURITY_TABLE"])
 bucket_name = os.environ["NOTES_BUCKET"]
 max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(20 * 1024 * 1024)))
 max_files_per_note = int(os.environ.get("MAX_FILES_PER_NOTE", "10"))
+max_account_storage_bytes = int(os.environ.get("MAX_ACCOUNT_STORAGE_BYTES", str(1024 ** 3)))
 s3 = boto3.client("s3", region_name=os.environ.get("AWS_REGION", "us-east-2"))
 
 ALLOWED_TYPES = {
@@ -227,6 +228,17 @@ def register_file(user_id, note_id, payload):
             {"error": f"Uploaded file exceeds the {max_file_bytes // (1024 * 1024)} MB limit"},
         )
 
+    # Recheck using actual S3 object sizes, not the size claimed by the client.
+    # At registration the new upload is already present, so discount a file
+    # being replaced only if it will be deleted after successful registration.
+    replaced_bytes = int(replace_target.get("sizeBytes") or 0) if replace_target else 0
+    if current_account_storage_bytes(user_id) - replaced_bytes > max_account_storage_bytes:
+        s3.delete_object(Bucket=bucket_name, Key=key)
+        return response(413, {
+            "error": "Your account has reached its 1 GB source-file storage allowance. Remove unused files before uploading more.",
+            "code": "ACCOUNT_STORAGE_LIMIT",
+        })
+
     if actual_type not in ALLOWED_TYPES or actual_type != content_type:
         s3.delete_object(Bucket=bucket_name, Key=key)
         return response(400, {"error": "Uploaded file type verification failed"})
@@ -384,6 +396,29 @@ def update_file_metadata(user_id, note_id, file_id, payload):
         raise
 
     return response(200, {"note": result.get("Attributes", {})})
+
+
+
+def current_account_storage_bytes(user_id):
+    """Count current S3 objects, including orphaned uploads, under this user only.
+
+    This is a preflight safeguard, not an atomic storage reservation; concurrent
+    signed uploads can briefly exceed the limit.
+    """
+    prefix = f"users/{user_id}/"
+    total = 0
+    token = None
+    while True:
+        kwargs = {"Bucket": bucket_name, "Prefix": prefix, "MaxKeys": 1000}
+        if token:
+            kwargs["ContinuationToken"] = token
+        result = s3.list_objects_v2(**kwargs)
+        total += sum(int(item.get("Size") or 0) for item in result.get("Contents", []))
+        if not result.get("IsTruncated"):
+            return total
+        token = result.get("NextContinuationToken")
+        if not token:
+            raise RuntimeError("Incomplete S3 storage listing")
 
 
 def lambda_handler(event, context):

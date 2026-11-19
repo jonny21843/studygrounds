@@ -16,6 +16,7 @@ bucket_name = os.environ["NOTES_BUCKET"]
 aws_region = os.environ.get("AWS_REGION", "us-east-2")
 max_file_bytes = int(os.environ.get("MAX_FILE_BYTES", str(20 * 1024 * 1024)))
 max_files_per_note = int(os.environ.get("MAX_FILES_PER_NOTE", "10"))
+max_account_storage_bytes = int(os.environ.get("MAX_ACCOUNT_STORAGE_BYTES", str(1024 ** 3)))
 
 s3 = boto3.client(
     "s3",
@@ -113,6 +114,29 @@ def reserve_daily_action(user_id, action, limit):
             return False
         raise
 
+
+def current_account_storage_bytes(user_id):
+    """Count current S3 objects, including orphaned uploads, under this user only.
+
+    This is a preflight safeguard, not an atomic storage reservation; concurrent
+    signed uploads can briefly exceed the limit.
+    """
+    prefix = f"users/{user_id}/"
+    total = 0
+    token = None
+    while True:
+        kwargs = {"Bucket": bucket_name, "Prefix": prefix, "MaxKeys": 1000}
+        if token:
+            kwargs["ContinuationToken"] = token
+        result = s3.list_objects_v2(**kwargs)
+        total += sum(int(item.get("Size") or 0) for item in result.get("Contents", []))
+        if not result.get("IsTruncated"):
+            return total
+        token = result.get("NextContinuationToken")
+        if not token:
+            raise RuntimeError("Incomplete S3 storage listing")
+
+
 def lambda_handler(event, context):
     user_id = current_user_id(event)
     if not user_id:
@@ -182,6 +206,19 @@ def lambda_handler(event, context):
             400,
             {"error": f"File is too large. Maximum size is {max_file_bytes // (1024 * 1024)} MB"},
         )
+
+    # Do not issue another presigned upload if the account is already at its
+    # storage allowance. Existing objects and unregistered uploads both count.
+    replacing_size = 0
+    if replacing:
+        replacing_size = int(next((item.get("sizeBytes") or 0 for item in files
+                                  if item.get("fileId") == replace_file_id), 0))
+    projected_bytes = current_account_storage_bytes(user_id) + file_size - replacing_size
+    if projected_bytes > max_account_storage_bytes:
+        return response(413, {
+            "error": "Your account has reached its 1 GB source-file storage allowance. Remove unused files before uploading more.",
+            "code": "ACCOUNT_STORAGE_LIMIT",
+        })
 
     if not reserve_daily_action(user_id, "upload", int(os.environ.get("MAX_DAILY_UPLOAD_REQUESTS", "30"))):
         return response(429, {"error": "Daily upload request limit reached. Try again tomorrow (UTC).", "code": "DAILY_UPLOAD_LIMIT"})

@@ -706,6 +706,7 @@ Resources:
           SECURITY_TABLE: !Ref UserSecurityTable
           MAX_FILE_BYTES: 20971520
           MAX_FILES_PER_NOTE: 10
+          MAX_ACCOUNT_STORAGE_BYTES: "1073741824"
           PREFERENCES_TABLE: !Ref PreferencesTable
           MAX_DAILY_UPLOAD_REQUESTS: "30"
       Policies:
@@ -717,6 +718,10 @@ Resources:
             TableName: !Ref PreferencesTable
         - S3WritePolicy:
             BucketName: !Ref NotesBucket
+        - Statement:
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt NotesBucket.Arn
       Events:
         CreateUpload:
           Type: HttpApi
@@ -742,6 +747,7 @@ Resources:
           SECURITY_TABLE: !Ref UserSecurityTable
           MAX_FILE_BYTES: 20971520
           MAX_FILES_PER_NOTE: 10
+          MAX_ACCOUNT_STORAGE_BYTES: "1073741824"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref NotesTable
@@ -749,6 +755,10 @@ Resources:
             TableName: !Ref UserSecurityTable
         - S3CrudPolicy:
             BucketName: !Ref NotesBucket
+        - Statement:
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt NotesBucket.Arn
       Events:
         RegisterFile:
           Type: HttpApi
