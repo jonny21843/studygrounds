@@ -32,7 +32,7 @@ This phase adds **per-account UTC-day atomic counters** stored as `USER#<id> / Q
 - Missing metrics do not generate an alarm.
 
 ### Preconditions before any monitoring deployment
-1. Owner chooses the alert email and confirms that they can receive SNS email.
+1. Alert destination selected for DEV: `jonathan.feagans@outlook.com`. The monitoring template defaults to this email; an SNS subscription confirmation email will be sent only when the separate monitoring stack is actually deployed. The recipient must click the confirmation link before alerts can arrive.
 2. Read the existing DEV CloudFormation stack outputs and resources to determine actual `ApiId`, `MalwareFunctionName`, `UploadFunctionName` and `NotesBucketName`; do not guess from a function's logical name.
 3. Check that the deployment IAM principal can create SNS, CloudWatch alarms, EventBridge rules and topic resource policies. If not, add scoped permissions through a separate reviewed IAM change. Don't expand the normal app deployment role silently.
 4. Review CloudWatch/SNS/EventBridge costs and alert thresholds. DEV and PROD must have separate topics, alert names and recipient confirmation.
@@ -46,7 +46,7 @@ aws cloudformation deploy \
   --template-file infrastructure/monitoring.yaml \
   --parameter-overrides \
     EnvironmentName=dev \
-    AlertEmail=YOUR_CONFIRMED_EMAIL \
+    AlertEmail=jonathan.feagans@outlook.com \
     ApiId=ACTUAL_DEV_API_ID \
     MalwareFunctionName=ACTUAL_DEV_MALWARE_HANDLER \
     UploadFunctionName=ACTUAL_DEV_UPLOAD_HANDLER \
