@@ -1,0 +1,33 @@
+name: Audit StudyGrounds DEV retention (manual, read-only)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install boto3
+        run: python -m pip install boto3
+      - name: Configure DEV AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_FRONTEND_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-2
+      - name: Inventory retention (no mutations)
+        run: python scripts/audit_retention_readonly.py --stack notes-app-dev --region us-east-2 --output retention-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studygrounds-dev-retention-inventory
+          path: retention-report.json
+          if-no-files-found: warn
