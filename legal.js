@@ -27,8 +27,9 @@ function showLegalGate(message = "") {
             <p class="eyebrow">StudyGrounds · Community safety</p>
             <h2 id="legal-gate-title">Review our policies</h2>
             <p>Before continuing, please review our legal documents. Your notes and account will remain available after you accept.</p>
-            <p><a href="/terms.html" target="_blank" rel="noopener">Terms of Use</a> (v<span id="legal-terms-version"></span>) · <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> (v<span id="legal-privacy-version"></span>) · <a href="/community-guidelines.html" target="_blank" rel="noopener">Community Guidelines</a></p>
+            <p><a href="/terms.html" target="_blank" rel="noopener">Terms of Use</a> (v<span id="legal-terms-version"></span>) · <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> (v<span id="legal-privacy-version"></span>) · <a href="/community-guidelines.html" target="_blank" rel="noopener">Community Guidelines</a> · <a href="/copyright.html" target="_blank" rel="noopener">Copyright and DMCA Policy</a></p>
             <form id="legal-accept-form">
+                <label><input id="legal-age" type="checkbox" required> I confirm that I am at least 13 years old.</label>
                 <label><input id="legal-agree" type="checkbox" required> I have read and agree to the Terms of Use.</label>
                 <label><input id="legal-privacy" type="checkbox" required> I acknowledge the Privacy Policy.</label>
                 <p id="legal-gate-message" role="alert" class="status-text"></p>
@@ -50,7 +51,8 @@ function showLegalGate(message = "") {
                         termsVersion: legalStatus.documents.terms.version,
                         privacyVersion: legalStatus.documents.privacy.version,
                         agreeToTerms: gate.querySelector("#legal-agree").checked,
-                        acknowledgePrivacy: gate.querySelector("#legal-privacy").checked
+                        acknowledgePrivacy: gate.querySelector("#legal-privacy").checked,
+                        age13OrOlder: gate.querySelector("#legal-age").checked
                     })
                 });
                 if (!response.ok) throw new Error((await response.json()).error || "Could not save acceptance.");
