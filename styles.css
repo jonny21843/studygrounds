@@ -3392,3 +3392,6 @@ mark.reader-private-highlight[data-color="pink"] { background: #ffd1e5; }
     font-weight: 600;
     pointer-events: none;
 }
+
+/* Give note language the same breathing room as Description. */
+.note-form .note-language-field { margin-top: 16px; }
