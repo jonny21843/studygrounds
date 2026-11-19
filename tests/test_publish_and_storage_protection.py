@@ -165,6 +165,32 @@ class StorageProtectionTests(TestCase):
         self.tables["prefs"].update_item.assert_called_once()
 
 
+class RegistrationStorageProtectionTests(TestCase):
+    def setUp(self):
+        self.app, self.tables, self.clients = load("backend/functions/notes/files/app.py")
+        self.tables["notes"].get_item.return_value = {"Item": note(files=[])}
+        self.tables["security"].get_item.return_value = {}
+        self.clients["s3"].head_object.return_value = {
+            "ContentLength": 100, "ContentType": "application/pdf",
+        }
+        self.clients["s3"].list_objects_v2.return_value = {
+            "Contents": [{"Key": FILE_KEY, "Size": SIZE_LIMIT + 10}],
+            "IsTruncated": False,
+        }
+
+    def test_actual_size_is_rechecked_before_registration(self):
+        payload = {
+            "key": FILE_KEY, "filename": "file.pdf",
+            "contentType": "application/pdf",
+        }
+        result = self.app.register_file("u-1", "n-1", payload)
+        self.assertEqual(result["statusCode"], 413)
+        self.assertEqual(json.loads(result["body"])["code"], "ACCOUNT_STORAGE_LIMIT")
+        self.clients["s3"].delete_object.assert_called_once_with(Bucket="bucket", Key=FILE_KEY)
+        self.tables["notes"].update_item.assert_not_called()
+        self.assertEqual(self.clients["s3"].list_objects_v2.call_args.kwargs["Prefix"], "users/u-1/")
+
+
 class AutoPublishSafetyTests(TestCase):
     def setUp(self):
         self.app, self.tables, self.clients = load("backend/functions/security/malware_scan_result/app.py")
