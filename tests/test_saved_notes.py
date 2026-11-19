@@ -146,6 +146,7 @@ class SavedNotesTests(TestCase):
         code, body = self.call("GET")
         self.assertEqual(code, 200)
         self.assertEqual(body["notes"][0]["savedCollection"], "Cloud")
+        self.assertEqual(body["notes"][0]["collection"], "")
         self.notes_table.get_item.return_value = {"Item": self.note("private")}
         code, body = self.call("GET")
         self.assertEqual(body["notes"][0]["savedCollection"], "Cloud")
