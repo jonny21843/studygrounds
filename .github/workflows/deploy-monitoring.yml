@@ -1,11 +1,11 @@
 # Separate operational monitoring stack. Does not modify the StudyGrounds application stack.
 # DEV auto-deploys once its one-time monitoring IAM bootstrap exists.
-# PROD is manual-only and MUST be dispatched against main after release approval.
+# PROD is manual from main until the repository opt-in variable enables future main updates.
 name: Deploy StudyGrounds monitoring
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, main]
     paths:
       - "infrastructure/monitoring.yaml"
       - ".github/workflows/deploy-monitoring.yml"
@@ -29,8 +29,10 @@ concurrency:
 jobs:
   monitoring:
     name: Deploy separate monitoring stack
+    # Automatic main-branch monitoring updates are opt-in after PROD launch approval.
+    if: github.ref == 'refs/heads/develop' || (github.ref == 'refs/heads/main' && (inputs.target == 'prod' || (github.event_name == 'push' && vars.STUDYGROUNDS_PROD_MONITORING_ENABLED == 'true')))
     runs-on: ubuntu-latest
-    environment: ${{ inputs.target == 'prod' && 'production' || 'development' }}
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'development' }}
     steps:
       - name: Enforce branch and target boundaries
         shell: bash
@@ -38,7 +40,9 @@ jobs:
           REQUESTED_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          target="${REQUESTED_TARGET:-dev}"
+          target="${REQUESTED_TARGET:-${GITHUB_REF##*/}}"
+          if [[ "$target" == "develop" ]]; then target="dev"; fi
+          if [[ "$target" == "main" ]]; then target="prod"; fi
           if [[ "$target" == "prod" && "${GITHUB_REF}" != "refs/heads/main" ]]; then
             echo "PROD monitoring only runs manually from main." >&2
             exit 1
