@@ -71,7 +71,8 @@ class DeletionRequestTests(unittest.TestCase):
             event(payload={"confirmation": "DELETE MY ACCOUNT"}), None)
         self.assertEqual(result["statusCode"], 202)
         self.queue.send_message.assert_not_called()
-        self.cognito.admin_disable_user.assert_not_called()
+        self.cognito.admin_disable_user.assert_called_once_with(
+            UserPoolId="test-pool", Username="cognito-my-user")
 
     def test_disable_failure_still_leaves_deletion_queued(self):
         from botocore.exceptions import ClientError

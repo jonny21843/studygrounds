@@ -44,9 +44,7 @@ function signUp() {
     overlay.className = "legal-gate";
     overlay.innerHTML = `<section class="legal-gate-dialog" role="dialog" aria-modal="true" aria-labelledby="age-gate-title">
         <h2 id="age-gate-title">Welcome to StudyGrounds</h2>
-        <p>StudyGrounds is for people aged 13 and older. Existing members can sign in. New members must confirm age eligibility before registering.</p>
-        <div class="age-gate-buttons"><button id="age-existing" class="button button-primary" type="button">Sign in to my account</button></div>
-        <hr>
+        <p>StudyGrounds is for people aged 13 and older. Before creating your account, confirm you meet the minimum age requirement.</p>
         <label><input type="checkbox" id="age-signup-confirm"> I confirm that I am at least 13 years old.</label>
         <p><a href="/terms.html" target="_blank" rel="noopener">Terms of Use</a> · <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a></p>
         <div class="age-gate-buttons"><button id="age-new" class="button button-secondary" type="button" disabled>Create an account</button><button id="age-cancel" class="button button-text" type="button">Cancel</button></div>
@@ -57,7 +55,6 @@ function signUp() {
     const create = overlay.querySelector("#age-new");
     age.addEventListener("change", () => {create.disabled = !age.checked;});
     overlay.querySelector("#age-cancel").addEventListener("click", () => overlay.remove());
-    overlay.querySelector("#age-existing").addEventListener("click", () => {overlay.remove(); signIn();});
     create.addEventListener("click", () => {
         if (!age.checked) return;
         // Session-scoped UI confirmation survives Cognito; backend still
@@ -65,7 +62,7 @@ function signUp() {
         sessionStorage.setItem("studygrounds_signup_age_confirmed", "1");
         startHostedAuth("signup");
     });
-    overlay.querySelector("#age-existing").focus();
+    age.focus();
 }
 
 async function startHostedAuth(screen = "authorize") {

@@ -42,7 +42,22 @@ def lambda_handler(event, context):
     if not isinstance(payload, dict) or payload != {"confirmation": "DELETE MY ACCOUNT"}:
         return reply(400, {"error": "Type DELETE MY ACCOUNT to confirm permanent deletion."})
     if existing:
-        return reply(202, {"requested": True, "status": existing.get("status", "PENDING")})
+        # A repeated request never enqueues duplicate destructive work, but
+        # it can repair a previously failed immediate account disable.
+        restricted = False
+        try:
+            cognito.admin_disable_user(UserPoolId=POOL, Username=existing.get("username") or username)
+            restricted = True
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") == "UserNotFoundException":
+                restricted = True
+            else:
+                import logging
+                logging.exception("Deletion pending but Cognito disable retry failed")
+        return reply(202, {
+            "requested": True, "status": existing.get("status", "PENDING"),
+            "accessRestricted": restricted,
+        })
     request_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     try:
