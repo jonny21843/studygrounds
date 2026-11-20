@@ -39,6 +39,10 @@ const ctx = {
     notesState: state,
     document: {getElementById:element},
     isAuthenticated:() => authenticated,
+    // Settings now shows the authenticated account ID. Supply the same
+    // identity dependencies as the browser so navigation can be tested.
+    sessionStorage: {getItem: key => key === "id_token" ? "test-id-token" : null},
+    decodeJwtPayload: () => ({sub: "test-user-id"}),
     isConfiguredAdmin:() => true,
     getAccessToken:() => token,
     exitPublicReaderFocus:() => {},
