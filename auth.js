@@ -33,6 +33,11 @@ async function createPkceChallenge(verifier) {
 
 // This is a pre-registration warning, not independently verified age assurance.
 function signIn() {
+    sessionStorage.removeItem("studygrounds_signup_age_confirmed");
+    startHostedAuth("authorize");
+}
+
+function signUp() {
     if (document.getElementById("age-signup-gate")) return;
     const overlay = document.createElement("div");
     overlay.id = "age-signup-gate";
@@ -52,7 +57,7 @@ function signIn() {
     const create = overlay.querySelector("#age-new");
     age.addEventListener("change", () => {create.disabled = !age.checked;});
     overlay.querySelector("#age-cancel").addEventListener("click", () => overlay.remove());
-    overlay.querySelector("#age-existing").addEventListener("click", () => {sessionStorage.removeItem("studygrounds_signup_age_confirmed"); startHostedAuth("authorize");});
+    overlay.querySelector("#age-existing").addEventListener("click", () => {overlay.remove(); signIn();});
     create.addEventListener("click", () => {
         if (!age.checked) return;
         // Session-scoped UI confirmation survives Cognito; backend still
@@ -210,6 +215,7 @@ async function loadCurrentUser() {
 async function updateAuthUi() {
     const status = document.getElementById("auth-status");
     const signInButton = document.getElementById("sign-in-btn");
+    const signUpButton = document.getElementById("sign-up-btn");
     const signOutButton = document.getElementById("sign-out-btn");
 
     if (!status || !signInButton || !signOutButton) {
@@ -219,11 +225,13 @@ async function updateAuthUi() {
     if (!isAuthenticated()) {
         status.textContent = "Not signed in";
         signInButton.hidden = false;
+        if (signUpButton) signUpButton.hidden = false;
         signOutButton.hidden = true;
         return;
     }
 
     signInButton.hidden = true;
+    if (signUpButton) signUpButton.hidden = true;
     signOutButton.hidden = false;
 
     const displayIdentity = getDisplayIdentity();
@@ -243,6 +251,7 @@ async function updateAuthUi() {
         if (!user || !isAuthenticated()) {
             status.textContent = "Not signed in";
             signInButton.hidden = false;
+            if (signUpButton) signUpButton.hidden = false;
             signOutButton.hidden = true;
             if (typeof renderSignedInState === "function") renderSignedInState();
         }
@@ -259,6 +268,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document
         .getElementById("sign-out-btn")
         ?.addEventListener("click", signOut);
+    document.getElementById("sign-up-btn")?.addEventListener("click", signUp);
 
     updateAuthUi();
 });

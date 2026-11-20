@@ -85,11 +85,17 @@ Resources:
         Variables:
           PREFERENCES_TABLE: !Ref PreferencesTable
           DELETION_QUEUE_URL: !Ref AccountDeletionQueue
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref PreferencesTable
         - SQSSendMessagePolicy:
             QueueName: !GetAtt AccountDeletionQueue.QueueName
+        - Statement:
+            - Effect: Allow
+              Action:
+                - cognito-idp:AdminDisableUser
+              Resource: !Sub "arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${CognitoUserPoolId}"
       Events:
         DeletionStatus:
           Type: HttpApi
@@ -623,6 +629,9 @@ Resources:
       Architectures: [x86_64]
       MemorySize: 128
       Timeout: 5
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref PreferencesTable
       Events:
         GetMe:
           Type: HttpApi

@@ -1,4 +1,6 @@
 import json
+import os
+import boto3
 
 
 def response(status_code, body):
@@ -26,6 +28,16 @@ def lambda_handler(event, context):
 
     if not user_id:
         return response(401, {"error": "Authenticated user ID is missing"})
+
+    marker = boto3.resource("dynamodb").Table(os.environ["LEGAL_PREFERENCES_TABLE"]).get_item(
+        Key={"pk": "USER#" + user_id, "sk": "ACCOUNT#DELETION"},
+        ConsistentRead=True,
+    ).get("Item")
+    if marker:
+        return response(423, {
+            "error": "This account is scheduled for deletion.",
+            "code": "ACCOUNT_DELETION_PENDING",
+        })
 
     return response(
         200,

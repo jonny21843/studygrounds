@@ -5,6 +5,14 @@ async function checkLegalStatus() {
     if (!isAuthenticated()) return true;
     const token = getAccessToken();
     const response = await fetch(getApiBaseUrl() + "/api/legal/status", {headers: {"Authorization": "Bearer " + token}, cache: "no-store"});
+    if (response.status === 423) {
+        clearTokens();
+        hideLegalGate();
+        if (typeof renderSignedInState === "function") renderSignedInState();
+        if (typeof updateAuthUi === "function") updateAuthUi();
+        window.alert("This account is scheduled for deletion and cannot be accessed.");
+        return false;
+    }
     if (!response.ok) throw new Error("Unable to verify legal acceptance (" + response.status + ")");
     const data = await response.json();
     if (getAccessToken() !== token) return false;

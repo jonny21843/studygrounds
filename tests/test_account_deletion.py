@@ -31,10 +31,11 @@ class DeletionRequestTests(unittest.TestCase):
         self.table = MagicMock()
         self.table.get_item.return_value = {}
         self.queue = MagicMock()
+        self.cognito = MagicMock()
         resource = MagicMock()
         resource.Table.return_value = self.table
         self.boto = patch("boto3.resource", return_value=resource)
-        self.client = patch("boto3.client", return_value=self.queue)
+        self.client = patch("boto3.client", side_effect=lambda name: self.queue if name == "sqs" else self.cognito)
         self.boto.start()
         self.client.start()
         spec = importlib.util.spec_from_file_location(
@@ -61,6 +62,8 @@ class DeletionRequestTests(unittest.TestCase):
         self.assertEqual(body["sub"], "my-user")
         self.assertNotIn("username", body)
         self.assertGreaterEqual(self.queue.send_message.call_args.kwargs["DelaySeconds"], 300)
+        self.cognito.admin_disable_user.assert_called_once_with(
+            UserPoolId="test-pool", Username="cognito-my-user")
 
     def test_existing_pending_request_is_idempotent(self):
         self.table.get_item.return_value = {"Item": {"status": "PENDING"}}
@@ -68,6 +71,17 @@ class DeletionRequestTests(unittest.TestCase):
             event(payload={"confirmation": "DELETE MY ACCOUNT"}), None)
         self.assertEqual(result["statusCode"], 202)
         self.queue.send_message.assert_not_called()
+        self.cognito.admin_disable_user.assert_not_called()
+
+    def test_disable_failure_still_leaves_deletion_queued(self):
+        from botocore.exceptions import ClientError
+        self.cognito.admin_disable_user.side_effect = ClientError(
+            {"Error": {"Code": "AccessDeniedException", "Message": "no permission"}}, "AdminDisableUser"
+        )
+        result = self.module.lambda_handler(event(payload={"confirmation": "DELETE MY ACCOUNT"}), None)
+        self.assertEqual(result["statusCode"], 202)
+        self.assertFalse(json.loads(result["body"])["accessRestricted"])
+        self.queue.send_message.assert_called_once()
 
     def test_missing_identity_does_not_delete_another_user(self):
         e = event(payload={"confirmation": "DELETE MY ACCOUNT"})

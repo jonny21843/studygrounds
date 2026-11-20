@@ -192,6 +192,15 @@ class AcceptanceEndpointTests(unittest.TestCase):
         self.assertEqual(self.accept(userId="another-user")["statusCode"], 400)
         self.table.put_item.assert_not_called()
 
+    def test_pending_deletion_rejects_status_and_acceptance(self):
+        self.items[("USER#user-123", "ACCOUNT#DELETION")] = {"status": "PENDING"}
+        result = self.handler.lambda_handler(request("GET"), None)
+        self.assertEqual(result["statusCode"], 423)
+        self.assertEqual(response_json(result)["code"], "ACCOUNT_DELETION_PENDING")
+        result = self.accept()
+        self.assertEqual(result["statusCode"], 423)
+        self.table.put_item.assert_not_called()
+
     def test_get_acceptance_does_not_falsely_infer_age_from_version(self):
         self.seed_doc("terms")
         self.seed_doc("privacy")

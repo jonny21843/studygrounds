@@ -92,6 +92,9 @@ jobs:
       - name: Home navigation regression tests
         run: node tests/test_home_navigation.cjs
 
+      - name: Signup and pending-deletion UI checks
+        run: node tests/test_signup_age.cjs
+
       - name: Set up AWS SAM CLI
         uses: aws-actions/setup-sam@v3
 

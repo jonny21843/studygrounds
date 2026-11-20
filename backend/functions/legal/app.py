@@ -54,6 +54,12 @@ def lambda_handler(event, context):
     if not sub:
         return respond(401, {"error": "Authentication required"})
     method = ((event.get("requestContext") or {}).get("http") or {}).get("method", "GET").upper()
+    pending = table.get_item(
+        Key={"pk": "USER#" + sub, "sk": "ACCOUNT#DELETION"},
+        ConsistentRead=True,
+    ).get("Item")
+    if pending:
+        return respond(423, {"error": "This account is scheduled for deletion.", "code": "ACCOUNT_DELETION_PENDING"})
     confirmed_age = age_confirmed(sub)
     if method == "GET":
         documents = {}

@@ -71,6 +71,22 @@ async function handleCallback() {
             String(Date.now() + tokens.expires_in * 1000)
         );
 
+        // Reject tokens for an account already pending permanent deletion.
+        const identityCheck = await fetch(getApiBaseUrl() + "/api/me", {
+            headers: {Authorization: "Bearer " + tokens.access_token},
+            cache: "no-store"
+        });
+        if (identityCheck.status === 423) {
+            clearTokens();
+            sessionStorage.removeItem("studygrounds_signup_age_confirmed");
+            status.textContent = "This account is scheduled for deletion and cannot be accessed.";
+            return;
+        }
+        if (!identityCheck.ok) {
+            clearTokens();
+            throw new Error("Unable to verify account access after sign in.");
+        }
+
         sessionStorage.removeItem("pkce_code_verifier");
         sessionStorage.removeItem("oauth_state");
 

@@ -9,6 +9,8 @@ from botocore.exceptions import ClientError
 dynamo = boto3.resource("dynamodb")
 prefs = dynamo.Table(os.environ["PREFERENCES_TABLE"])
 queue = boto3.client("sqs")
+cognito = boto3.client("cognito-idp")
+POOL = os.environ["COGNITO_USER_POOL_ID"]
 QUEUE_URL = os.environ["DELETION_QUEUE_URL"]
 MARKER = "ACCOUNT#DELETION"
 
@@ -58,4 +60,20 @@ def lambda_handler(event, context):
         # Do not strand an account in a permanently blocked state if enqueue fails.
         prefs.delete_item(Key=key, ConditionExpression="requestId = :id", ExpressionAttributeValues={":id": request_id})
         return reply(503, {"error": "Deletion could not be queued. Please retry."})
-    return reply(202, {"requested": True, "status": "PENDING", "message": "Your account deletion has been requested. Sign out now."})
+    # Prevent new Cognito logins while the delayed SQS job waits for signed
+    # upload URLs to expire. Previously issued JWTs are checked by /api/me
+    # and /api/legal/status while the deletion marker exists.
+    try:
+        cognito.admin_disable_user(UserPoolId=POOL, Username=username)
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "UserNotFoundException":
+            import logging
+            logging.exception("Account deletion queued, but Cognito disable failed")
+            return reply(202, {
+                "requested": True, "status": "PENDING", "accessRestricted": False,
+                "message": "Deletion queued; immediate login restriction could not be confirmed.",
+            })
+    return reply(202, {
+        "requested": True, "status": "PENDING", "accessRestricted": True,
+        "message": "Account disabled; permanent deletion is processing.",
+    })

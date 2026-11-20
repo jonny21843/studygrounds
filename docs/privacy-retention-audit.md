@@ -51,3 +51,7 @@ This is a code-level inventory, **not an assertion that the live AWS retention s
 5. After processing, verify the Cognito user is missing, and all relevant user partitions query empty using the saved ID.
 6. Check the DEV upload bucket has no objects under `users/{sub}/` and the dead-letter queue remains empty.
 7. Verify previously registered users are not shown the 13+ checkbox when only a policy version needs updating.
+
+## Immediate access restriction after deletion request (2026-11-19)
+
+The request API now calls Cognito `AdminDisableUser` after the deletion job is queued. Future interactive sign-ins should fail; the six-minute SQS delay remains to allow previously signed upload URLs to expire. `GET /api/me` and the legal-status API return HTTP 423 for pending accounts. An existing valid JWT may still work on other read endpoints until expiry; full read-path enforcement is a future security follow-up. If Cognito disable fails, the queued deletion still proceeds and the request API reports `accessRestricted: false` so operations can investigate. Verify in DEV by attempting sign-in immediately after a disposable user requests deletion, then checking final account and storage cleanup.

@@ -920,6 +920,8 @@ function renderSignedInState() {
     document.getElementById("home-create").hidden = !signedIn;
     document.getElementById("home-study-card").hidden = !signedIn;
     document.getElementById("home-sign-in").hidden = signedIn;
+    document.getElementById("home-sign-up").hidden = signedIn;
+    document.getElementById("hero-sign-up-btn").hidden = signedIn;
     document.getElementById("home-welcome").textContent = signedIn ? "Welcome back to StudyGrounds" : "Welcome to StudyGrounds";
     updateWelcomeGuide();
     if (!signedIn && ["my-notes", "saved-notes", "study-history", "settings", "feedback", ...ADMIN_VIEWS].includes(notesState.activeView)) {
@@ -4740,6 +4742,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await loadPublicTaxonomy();
 
     document.getElementById("hero-sign-in-btn").addEventListener("click", signIn);
+    document.getElementById("hero-sign-up-btn").addEventListener("click", signUp);
     document.getElementById("notifications-toggle").addEventListener("click", () => toggleNotifications(!notificationsOpen));
     document.getElementById("notifications-read-all").addEventListener("click", () => markNotificationRead());
     document.addEventListener("click", event => {
@@ -4752,6 +4755,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("home-guide-share").addEventListener("click", () => {setActiveView("my-notes"); document.getElementById("new-note-btn").click();});
     document.getElementById("home-guide-dismiss").addEventListener("click", dismissWelcomeGuide);
     document.getElementById("home-sign-in").addEventListener("click", signIn);
+    document.getElementById("home-sign-up").addEventListener("click", signUp);
     document.getElementById("home-history").addEventListener("click", () => setActiveView("study-history"));
     document.getElementById("home-saved").addEventListener("click", () => setActiveView("saved-notes"));
     document.getElementById("saved-collection-filter").addEventListener("change", event => {
